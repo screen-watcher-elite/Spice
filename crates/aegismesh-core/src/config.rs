@@ -173,7 +173,7 @@ impl Default for GeminiConfig {
     fn default() -> Self {
         Self {
             api_key: None,
-            agent_model: "gemini-3.1-flash-lite".to_string(),
+            agent_model: "gemini-3.5-flash-lite".to_string(),
             decisions_endpoint: "https://generativelanguage.googleapis.com/v1beta/decisions"
                 .to_string(),
             decision_model: "gemini-decision-1".to_string(),
@@ -209,9 +209,65 @@ impl Default for SentinelConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            model: "gemini-3.1-flash-lite".to_string(),
+            model: "gemini-3-flash-preview".to_string(),
             auto_quarantine_threshold: 0.82,
             auto_revert_rogue_payouts: true,
+        }
+    }
+}
+
+fn load_dotenv_file(cfg: &mut AegisConfig, path: &Path, key_only: bool) {
+    let Ok(raw) = fs::read_to_string(path) else {
+        return;
+    };
+    let mut legacy_gemini_model: Option<String> = None;
+    let mut explicit_agent_model = false;
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            let k = k.trim();
+            let v = v.trim().trim_matches('"').trim_matches('\'');
+            if v.is_empty() {
+                continue;
+            }
+            if key_only {
+                if k == "GEMINI_API_KEY" {
+                    cfg.google_ai.api_key = Some(v.to_string());
+                }
+                continue;
+            }
+            match k {
+                "GEMINI_API_KEY" => {
+                    cfg.google_ai.api_key = Some(v.to_string());
+                }
+                "GEMINI_AGENT_MODEL" => {
+                    cfg.google_ai.agent_model = v.to_string();
+                    explicit_agent_model = true;
+                }
+                "GEMINI_MODEL" => {
+                    legacy_gemini_model = Some(v.to_string());
+                }
+                "GEMINI_DECISION_MODEL" => {
+                    cfg.google_ai.decision_model = v.to_string();
+                }
+                "GEMINI_SENTINEL_MODEL" => {
+                    cfg.sentinel.model = v.to_string();
+                }
+                "AEGIS_ADMIN_KEY" => {
+                    cfg.firewall.admin_key = Some(v.to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if !key_only && !explicit_agent_model {
+        if let Some(m) = legacy_gemini_model {
+            cfg.google_ai.agent_model = m;
         }
     }
 }
@@ -245,29 +301,15 @@ impl AegisConfig {
         // Load optional .env file if present locally (never committed)
         let env_path = base_dir.join(".env");
         if env_path.exists() {
-            if let Ok(raw) = fs::read_to_string(&env_path) {
-                for line in raw.lines() {
-                    let line = line.trim();
-                    if line.is_empty() || line.starts_with('#') {
-                        continue;
-                    }
-                    if let Some((k, v)) = line.split_once('=') {
-                        let k = k.trim();
-                        let v = v.trim().trim_matches('"').trim_matches('\'');
-                        match k {
-                            "GEMINI_API_KEY" if !v.is_empty() => {
-                                cfg.google_ai.api_key = Some(v.to_string());
-                            }
-                            "GEMINI_MODEL" if !v.is_empty() => {
-                                cfg.google_ai.agent_model = v.to_string();
-                                cfg.sentinel.model = v.to_string();
-                            }
-                            "AEGIS_ADMIN_KEY" if !v.is_empty() => {
-                                cfg.firewall.admin_key = Some(v.to_string());
-                            }
-                            _ => {}
-                        }
-                    }
+            load_dotenv_file(&mut cfg, &env_path, false);
+        }
+
+        // Fallback API key lookup in sibling ../client_infra/.env (key-only so legacy GEMINI_MODEL does not downgrade 3-model defaults)
+        if cfg.google_ai.api_key.is_none() {
+            if let Some(sibling_env) = base_dir.parent().map(|p| p.join("client_infra").join(".env"))
+            {
+                if sibling_env.exists() {
+                    load_dotenv_file(&mut cfg, &sibling_env, true);
                 }
             }
         }
@@ -277,10 +319,28 @@ impl AegisConfig {
                 cfg.google_ai.api_key = Some(k.trim().to_string());
             }
         }
-        if let Ok(m) = env::var("GEMINI_MODEL") {
-            if !m.trim().is_empty() {
-                cfg.google_ai.agent_model = m.trim().to_string();
-                cfg.sentinel.model = m.trim().to_string();
+        let mut env_explicit_agent = false;
+        if let Ok(am) = env::var("GEMINI_AGENT_MODEL") {
+            if !am.trim().is_empty() {
+                cfg.google_ai.agent_model = am.trim().to_string();
+                env_explicit_agent = true;
+            }
+        }
+        if !env_explicit_agent {
+            if let Ok(m) = env::var("GEMINI_MODEL") {
+                if !m.trim().is_empty() {
+                    cfg.google_ai.agent_model = m.trim().to_string();
+                }
+            }
+        }
+        if let Ok(dm) = env::var("GEMINI_DECISION_MODEL") {
+            if !dm.trim().is_empty() {
+                cfg.google_ai.decision_model = dm.trim().to_string();
+            }
+        }
+        if let Ok(sm) = env::var("GEMINI_SENTINEL_MODEL") {
+            if !sm.trim().is_empty() {
+                cfg.sentinel.model = sm.trim().to_string();
             }
         }
         if let Ok(ak) = env::var("AEGIS_ADMIN_KEY") {
@@ -288,18 +348,40 @@ impl AegisConfig {
                 cfg.firewall.admin_key = Some(ak.trim().to_string());
             }
         }
-        if let Ok(h) = env::var("AEGIS_HOST") {
-            if !h.trim().is_empty() {
-                cfg.server.host = h.trim().to_string();
-            }
-        }
-        if let Ok(p) = env::var("AEGIS_PORT") {
-            if let Ok(port) = p.trim().parse::<u16>() {
-                cfg.server.port = port;
-            }
-        }
+        Self::apply_cloud_env(
+            &mut cfg,
+            env::var("AEGIS_HOST").ok().as_deref(),
+            env::var("AEGIS_PORT").ok().as_deref(),
+            env::var("PORT").ok().as_deref(),
+            env::var("K_SERVICE").ok().as_deref(),
+        );
 
         cfg
+    }
+
+    /// Apply container / Google Cloud Run runtime networking overrides (`PORT`, `K_SERVICE`, `AEGIS_HOST`, `AEGIS_PORT`).
+    pub fn apply_cloud_env(
+        cfg: &mut AegisConfig,
+        aegis_host: Option<&str>,
+        aegis_port: Option<&str>,
+        cloud_port: Option<&str>,
+        k_service: Option<&str>,
+    ) {
+        let has_cloud_port = cloud_port.and_then(|p| p.trim().parse::<u16>().ok()).is_some();
+        let has_k_service = k_service.map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        if let Some(h) = aegis_host.map(str::trim).filter(|s| !s.is_empty()) {
+            cfg.server.host = h.to_string();
+        } else if has_k_service || has_cloud_port {
+            cfg.server.host = "0.0.0.0".to_string();
+            cfg.server.auto_open_browser = false;
+        }
+
+        if let Some(p) = aegis_port.and_then(|v| v.trim().parse::<u16>().ok()) {
+            cfg.server.port = p;
+        } else if let Some(p) = cloud_port.and_then(|v| v.trim().parse::<u16>().ok()) {
+            cfg.server.port = p;
+        }
     }
 }
 
@@ -344,6 +426,7 @@ pub struct SettingsPatch {
     pub gemini_api_key: Option<String>,
     pub clear_gemini_api_key: Option<bool>,
     pub agent_model: Option<String>,
+    pub decision_model: Option<String>,
     pub decisions_mode: Option<DecisionsMode>,
     pub sentinel_enabled: Option<bool>,
     pub sentinel_model: Option<String>,
@@ -406,6 +489,11 @@ impl ConfigStore {
         if let Some(m) = patch.agent_model {
             if !m.trim().is_empty() {
                 guard.google_ai.agent_model = m.trim().to_string();
+            }
+        }
+        if let Some(dm) = patch.decision_model {
+            if !dm.trim().is_empty() {
+                guard.google_ai.decision_model = dm.trim().to_string();
             }
         }
         if let Some(dm) = patch.decisions_mode {

@@ -12,6 +12,7 @@ fn main() {
 
     if let Ok(exe_path) = env::var("AEGISMESH_BUNDLE_EXE") {
         let p = PathBuf::from(&exe_path);
+        println!("cargo:rerun-if-changed={}", p.display());
         if p.exists() {
             fs::copy(&p, &dest_exe).expect("Failed to copy AEGISMESH_BUNDLE_EXE into OUT_DIR");
         } else {
@@ -31,6 +32,7 @@ fn main() {
                 .join("moneymax.db")
         });
 
+    println!("cargo:rerun-if-changed={}", db_src.display());
     if db_src.exists() {
         fs::copy(&db_src, &dest_db).expect("Failed to copy moneymax.db into OUT_DIR");
     } else {

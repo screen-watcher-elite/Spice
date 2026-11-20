@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>AegisMesh 3D Motion Stage</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+  :root {
+    --bg: #f3f4f7;
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --ink-3: #64748b;
+    --accent: #059669;
+    --indigo: #4f46e5;
+    --crimson: #e11d48;
+    --amber: #d97706;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .stage {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 42%, #ffffff 0%, #f3f4f7 58%, #e8ecf4 100%);
+  }
+
+  /* Softbox Studio Backdrop */
+  .grid-floor {
+    position: absolute;
+    inset: -200px;
+    background-image:
+      radial-gradient(rgba(15, 23, 42, 0.11) 1.3px, transparent 1.3px),
+      linear-gradient(to right, rgba(79, 70, 229, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(79, 70, 229, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px, 128px 128px, 128px 128px;
+    transform-origin: center center;
+    pointer-events: none;
+  }
+  .orb {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(110px);
+    pointer-events: none;
+  }
+  .orb-1 {
+    width: 820px; height: 820px;
+    background: radial-gradient(circle, rgba(5, 150, 105, 0.22), transparent 70%);
+    left: -120px; top: -180px;
+  }
+  .orb-2 {
+    width: 900px; height: 900px;
+    background: radial-gradient(circle, rgba(79, 70, 229, 0.20), transparent 70%);
+    right: -160px; bottom: -200px;
+  }
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, transparent 56%, rgba(15, 23, 42, 0.09) 100%);
+    pointer-events: none;
+    z-index: 90;
+  }
+
+  /* Split-Screen Hook Layer (Act 0) */
+  .split-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: none;
+  }
+  .before-pane {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 454px;
+    overflow: hidden;
+    background: #dfe3ea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .before-frame {
+    width: 820px;
+    height: 360px;
+    border: 2px solid rgba(15, 23, 42, 0.16);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+    filter: saturate(0.45) contrast(0.92) brightness(0.96);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    position: relative;
+  }
+  .before-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+  }
+  .after-pane {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 626px;
+    overflow: hidden;
+    background: radial-gradient(circle at 55% 48%, rgba(255,255,255,0.95) 0%, #eef1f7 65%, #e3e7f3 100%);
+  }
+  .split-divider {
+    position: absolute;
+    left: 0; right: 0;
+    top: 454px;
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--indigo));
+    box-shadow: 0 0 24px rgba(79, 70, 229, 0.45);
+    z-index: 35;
+  }
+  .pill-badge {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 8px 16px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+  }
+  .pill-before {
+    top: 28px; left: 48px;
+    background: rgba(15, 23, 42, 0.85);
+    color: #cbd5e1;
+    z-index: 40;
+  }
+  .pill-after {
+    top: 478px; left: 48px;
+    background: #ffffff;
+    color: var(--ink);
+    border: 1px solid rgba(5, 150, 105, 0.35);
+    box-shadow: 0 12px 28px -8px rgba(5, 150, 105, 0.25);
+    z-index: 40;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 999px; background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+  .dot.muted { background: #64748b; box-shadow: none; }
+
+  /* 3D Isometric Camera Rig */
+  .cam-world {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 2100px;
+    z-index: 25;
+  }
+  .ui-card3d {
+    position: relative;
+    width: 1480px;
+    height: 832.5px;
+    border-radius: 20px;
+    transform-style: preserve-3d;
+    background: #ffffff;
+    box-shadow:
+      0 60px 140px -24px rgba(15, 23, 42, 0.24),
+      0 22px 48px -12px rgba(79, 70, 229, 0.12),
+      0 0 0 1px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    will-change: transform, filter;
+  }
+  .ui-frame-bar {
+    position: relative;
+    height: 36px;
+    background: linear-gradient(180deg, #f8fafc 0%, #eef1f6 100%);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+    z-index: 4;
+  }
+  .mac-dot { width: 10px; height: 10px; border-radius: 999px; }
+  .mac-r { background: #fb7185; }
+  .mac-y { background: #fbbf24; }
+  .mac-g { background: #34d399; }
+  .url-pill {
+    margin: 0 auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #475569;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 3px 16px;
+    border-radius: 999px;
+  }
+  .ui-screen-box {
+    position: relative;
+    width: 1480px;
+    height: 796.5px;
+    overflow: hidden;
+    background: #f3f4f7;
+  }
+  .ui-screen-box img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top left;
+  }
+  .specular {
+    position: absolute;
+    inset: -30%;
+    background: linear-gradient(
+      115deg,
+      transparent 38%,
+      rgba(255, 255, 255, 0.42) 48%,
+      rgba(255, 255, 255, 0.08) 56%,
+      transparent 65%
+    );
+    pointer-events: none;
+    z-index: 6;
+    mix-blend-mode: screen;
+  }
+
+  /* Magnetic Spring Cursor + Click Ripple */
+  .cursor-wrap {
+    position: absolute;
+    left: 0; top: 0;
+    width: 44px; height: 44px;
+    pointer-events: none;
+    z-index: 60;
+    filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.28));
+  }
+  .ripple {
+    position: absolute;
+    width: 24px; height: 24px;
+    border-radius: 999px;
+    border: 3px solid var(--accent);
+    background: rgba(5, 150, 105, 0.14);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 58;
+    opacity: 0;
+  }
+
+  /* Staggered Floating Studio Callout Cards */
+  .float-card {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    border-radius: 16px;
+    padding: 16px 22px;
+    box-shadow:
+      0 28px 64px -16px rgba(15, 23, 42, 0.18),
+      0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+    z-index: 52;
+    min-width: 265px;
+    opacity: 0;
+  }
+  .fc-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .fc-eyebrow.indigo { color: var(--indigo); }
+  .fc-eyebrow.crimson { color: var(--crimson); }
+  .fc-val {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+  }
+  .fc-sub {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    margin-top: 3px;
+  }
+
+  /* 3D HUD Callout Pointer */
+  .hud-callout {
+    position: absolute;
+    z-index: 55;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .hud-pill {
+    background: #0f172a;
+    color: #ffffff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 9px 15px;
+    border-radius: 10px;
+    box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.35);
+    border: 1px solid rgba(79, 70, 229, 0.45);
+    white-space: nowrap;
+  }
+
+  /* Top Title Chip */
+  .chapter-bar {
+    position: absolute;
+    top: 32px;
+    left: 48px;
+    z-index: 75;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(14px);
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    box-shadow: 0 12px 32px -10px rgba(15, 23, 42, 0.12);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+  }
+  .brand-chip {
+    position: absolute;
+    top: 32px;
+    right: 48px;
+    z-index: 75;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(14px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    box-shadow: 0 12px 32px -10px rgba(15, 23, 42, 0.12);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  /* Bottom Subtitle Pill */
+  .caption-wrap {
+    position: absolute;
+    bottom: 34px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 75;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(14px);
+    color: #f8fafc;
+    padding: 12px 26px;
+    border-radius: 999px;
+    font-size: 16.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    box-shadow: 0 20px 50px -12px rgba(15, 23, 42, 0.32);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    white-space: nowrap;
+  }
+
+  /* Kinetic Title Splash Overlay */
+  .hero-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .hero-splash-card {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(22px);
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 28px;
+    padding: 46px 68px;
+    text-align: center;
+    box-shadow: 0 50px 120px -20px rgba(15, 23, 42, 0.22);
+  }
+  .hs-kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-top: 18px;
+  }
+  .hs-title {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    margin-top: 8px;
+    background: linear-gradient(135deg, #0f172a 0%, #334155 55%, #059669 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hs-sub {
+    font-size: 20px;
+    color: var(--ink-2);
+    margin-top: 10px;
+    font-weight: 500;
+  }
+  .hs-badges {
+    margin-top: 24px;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+  .hs-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 15px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    color: var(--ink);
+  }
+
+  /* Act 5 Skeuomorphic Receipt Printer Showcase */
+  .receipt-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 65;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    perspective: 1800px;
+  }
+  .printer-housing {
+    position: relative;
+    width: 680px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .printer-slot {
+    width: 620px;
+    height: 36px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    box-shadow: 0 22px 44px -10px rgba(15, 23, 42, 0.2), inset 0 2px 4px rgba(255,255,255,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 8;
+  }
+  .slot-slit {
+    width: 540px;
+    height: 9px;
+    border-radius: 999px;
+    background: #0f172a;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.7);
+  }
+  .receipt-clip {
+    position: relative;
+    width: 530px;
+    height: 670px;
+    overflow: hidden;
+    margin-top: -16px;
+    padding-top: 16px;
+    z-index: 5;
+  }
+  .receipt-paper {
+    width: 500px;
+    margin: 0 auto;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfc 75%, #f1f5f9 100%);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 6px 6px 14px 14px;
+    padding: 30px 32px;
+    box-shadow:
+      0 35px 80px -15px rgba(15, 23, 42, 0.26),
+      0 6px 16px rgba(15, 23, 42, 0.08);
+    position: relative;
+    overflow: hidden;
+    transform-origin: top center;
+  }
+  .receipt-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    border-bottom: 1.5px dashed rgba(15, 23, 42, 0.18);
+  }
+  .receipt-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-2);
+    letter-spacing: 0.07em;
+  }
+  .receipt-stamp {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(5, 150, 105, 0.1);
+    border: 1px solid rgba(5, 150, 105, 0.35);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .receipt-rows {
+    margin: 18px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .r-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+  .r-k { color: var(--ink-3); }
+  .r-v { color: var(--ink); font-weight: 700; }
+  .r-v.accent { color: var(--accent); }
+  .r-v.indigo { color: var(--indigo); }
+  .receipt-divider {
+    border-top: 1.5px dashed rgba(15, 23, 42, 0.18);
+    margin: 16px 0;
+  }
+  .receipt-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .receipt-grade {
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: -0.03em;
+  }
+  .barcode {
+    height: 44px;
+    margin-top: 18px;
+    background: repeating-linear-gradient(
+      90deg,
+      #0f172a 0px, #0f172a 3px,
+      transparent 3px, transparent 6px,
+      #0f172a 6px, #0f172a 7px,
+      transparent 7px, transparent 11px,
+      #0f172a 11px, #0f172a 15px,
+      transparent 15px, transparent 18px
+    );
+    opacity: 0.78;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="grid-floor" id="gridFloor"></div>
+  <div class="orb orb-1" id="orb1"></div>
+  <div class="orb orb-2" id="orb2"></div>
+
+  <!-- Top Chapter & Brand Chrome -->
+  <div class="chapter-bar" id="chapterBar">
+    <span class="dot" id="chapterDot"></span>
+    <span id="chapterText">BEFORE VS AFTER // AEGISMESH STUDIO</span>
+  </div>
+  <div class="brand-chip">
+    <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+      <path d="M16 3.5 27 9.75v12.5L16 28.5 5 22.25V9.75z" stroke="#0f172a" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M16 3.5V16M27 22.25 16 16M5 22.25 16 16" stroke="#64748b" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="16" cy="16" r="3.4" fill="#059669"/>
+    </svg>
+    <span>AegisMesh v2.0 · Light Mode</span>
+  </div>
+
+  <!-- ACT 0: Split-Screen Before vs After Hook -->
+  <div class="split-wrap" id="splitWrap">
+    <div class="before-pane" id="beforePane">
+      <div class="before-frame">
+        <img id="beforeImg" src="./captures/01_overview_initial.png" alt="Before raw capture" />
+      </div>
+    </div>
+    <div class="after-pane" id="afterPane">
+      <div class="cam-world" style="height: 100%;">
+        <div class="ui-card3d" id="splitAfterCard" style="width: 1120px; height: 630px; transform: rotateX(15deg) rotateY(-12deg) scale(0.92);">
+          <div class="ui-frame-bar">
+            <span class="mac-dot mac-r"></span><span class="mac-dot mac-y"></span><span class="mac-dot mac-g"></span>
+            <div class="url-pill">aegismesh.run.app · 6-Layer Security Gateway</div>
+          </div>
+          <div class="ui-screen-box" style="width: 1120px; height: 594px;">
+            <img src="./captures/10_overview_live.png" alt="After 3D showcase" />
+            <div class="specular" id="splitSpecular"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="split-divider" id="splitDivider"></div>
+    <div class="pill-badge pill-before" id="pillBefore"><span class="dot muted"></span>Before · Flat 2D Agent</div>
+    <div class="pill-badge pill-after" id="pillAfter"><span class="dot"></span>After · AegisMesh 3D Security Mesh</div>
+  </div>
+
+  <!-- ACTS 1-4: Main 3D Studio Camera World -->
+  <div class="cam-world" id="mainWorld">
+    <div class="ui-card3d" id="mainCard">
+      <div class="ui-frame-bar">
+        <span class="mac-dot mac-r"></span><span class="mac-dot mac-y"></span><span class="mac-dot mac-g"></span>
+        <div class="url-pill" id="urlPill">https://aegismesh-asia-south1.run.app // RBI_DPDP_FINTECH_V1</div>
+      </div>
+      <div class="ui-screen-box" id="screenBox">
+        <img id="imgA" src="./captures/01_overview_initial.png" alt="Layer A" />
+        <img id="imgB" src="./captures/10_overview_live.png" alt="Layer B" style="opacity: 0;" />
+        <div class="specular" id="mainSpecular"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Magnetic Cursor & Ripple -->
+  <div class="ripple" id="rippleEl"></div>
+  <div class="cursor-wrap" id="cursorEl" style="opacity: 0;">
+    <svg width="40" height="40" viewBox="0 0 36 36" fill="none">
+      <path d="M6.5 4.5L15.2 29.5L19.1 19.6L29.2 15.8L6.5 4.5Z" fill="#0f172a" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <!-- Staggered Floating Cards -->
+  <div class="float-card" id="floatLeft">
+    <div class="fc-eyebrow" id="flEye">RUST INLINE GATEWAY</div>
+    <div class="fc-val" id="flVal">37 µs</div>
+    <div class="fc-sub" id="flSub">26,643 ops/sec · 0 PII leaks</div>
+  </div>
+  <div class="float-card" id="floatRight">
+    <div class="fc-eyebrow indigo" id="frEye">GEMINI DECISIONS API</div>
+    <div class="fc-val" id="frVal">gemini-decision-1</div>
+    <div class="fc-sub" id="frSub">Zero output tokens · Calibrated gating</div>
+  </div>
+
+  <!-- 3D HUD Callout -->
+  <div class="hud-callout" id="hudCallout">
+    <svg width="46" height="32" viewBox="0 0 46 32" fill="none">
+      <path d="M44 16H6M6 16L17 5M6 16L17 27" stroke="#4f46e5" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="hud-pill" id="hudText">L1 NORMALIZER: Base64 + XSS BLOCKED</div>
+  </div>
+
+  <!-- Act 5 Physical Compliance Receipt & Hero Finale -->
+  <div class="receipt-stage" id="receiptStage">
+    <div class="printer-housing" id="printerHousing">
+      <div class="printer-slot">
+        <div class="slot-slit"></div>
+      </div>
+      <div class="receipt-clip">
+        <div class="receipt-paper" id="receiptPaper">
+          <div class="receipt-head">
+            <span class="receipt-title">AEGISMESH AUDIT RECEIPT</span>
+            <span class="receipt-stamp">RBI &amp; DPDP VERIFIED</span>
+          </div>
+          <div class="receipt-rows">
+            <div class="r-row"><span class="r-k">ACCOUNT ID</span><span class="r-v">MMX-AC-5002 · Kavita Roy</span></div>
+            <div class="r-row"><span class="r-k">INLINE GATEWAY</span><span class="r-v accent">37 µs · 6/6 LAYERS ARMED</span></div>
+            <div class="r-row"><span class="r-k">L2 DPDP VAULT</span><span class="r-v">0 BYTES UNMASKED PII</span></div>
+            <div class="r-row"><span class="r-k">L3 GUARDRAIL</span><span class="r-v indigo">gemini-decision-1 (LIVE)</span></div>
+            <div class="r-row"><span class="r-k">L4 MAKER-CHECKER</span><span class="r-v accent">APPROVED · ₹25,000.00</span></div>
+            <div class="r-row"><span class="r-k">L6 SENTINEL</span><span class="r-v indigo">gemini-3-flash-preview</span></div>
+            <div class="r-row"><span class="r-k">CLOUD TARGET</span><span class="r-v">Google Cloud Run (asia-south1)</span></div>
+          </div>
+          <div class="receipt-divider"></div>
+          <div class="receipt-total">
+            <div>
+              <div class="r-k" style="font-family:'JetBrains Mono',monospace;font-size:11px;">COMPLIANCE SCORE</div>
+              <div style="font-size:13px;font-weight:600;color:#475569;margin-top:2px;">Zero Policy Drift · Audit Locked</div>
+            </div>
+            <div class="receipt-grade">AAA</div>
+          </div>
+          <div class="barcode"></div>
+          <div class="specular" id="receiptSpecular"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kinetic Hero Splash / Closing Lockup -->
+  <div class="hero-splash" id="heroSplash">
+    <div class="hero-splash-card">
+      <svg width="72" height="72" viewBox="0 0 32 32" fill="none">
+        <path d="M16 3.5 27 9.75v12.5L16 28.5 5 22.25V9.75z" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M16 3.5V16M27 22.25 16 16M5 22.25 16 16" stroke="#64748b" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="16" cy="16" r="3.6" fill="#059669"/>
+      </svg>
+      <div class="hs-kicker" id="hsKicker">SIX-LAYER RUST AI SECURITY MESH</div>
+      <div class="hs-title" id="hsTitle">AegisMesh v2.0</div>
+      <div class="hs-sub" id="hsSub">Sub-millisecond DPDP &amp; RBI compliance for autonomous fintech AI</div>
+      <div class="hs-badges" id="hsBadges">
+        <span class="hs-pill">Portable Windows .exe</span>
+        <span class="hs-pill">gemini-3.5-flash-lite + decision-1 + 3-flash</span>
+        <span class="hs-pill">Google Cloud Run · asia-south1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kinetic Caption Strip -->
+  <div class="caption-wrap" id="captionBar">
+    <span>Initializing 6-Layer Security Mesh…</span>
+  </div>
+  <div class="vignette"></div>
+</div>
+
+<script>
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOutCubic = (t) => 1 - Math.pow(1 - clamp(t), 3);
+const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeSpring = (t) => {
+  const x = clamp(t);
+  return 1 - Math.exp(-6.2 * x) * Math.cos(8.5 * x);
+};
+const seg = (t, t0, t1) => clamp((t - t0) / Math.max(0.001, t1 - t0));
+
+let TIMELINE = null;
+let ANCHORS = null;
+const IMG_CACHE = {};
+
+async function loadAssets() {
+  if (TIMELINE) return;
+  const [tlRes, anRes] = await Promise.all([
+    fetch('./timeline.json'),
+    fetch('./anchors.json'),
+  ]);
+  TIMELINE = await tlRes.json();
+  ANCHORS = await anRes.json();
+  const imgs = [
+    '01_overview_initial.png', '02_sandbox_xss.png', '03_sandbox_coercion.png',
+    '04_chats_pending.png', '05_chats_modal.png', '06_chats_approved.png',
+    '07_sentinel.png', '08_settings.png', '09_palette.png', '10_overview_live.png',
+  ];
+  await Promise.all(
+    imgs.map(
+      (name) =>
+        new Promise((res) => {
+          const im = new Image();
+          im.onload = () => { IMG_CACHE[name] = `./captures/${name}`; res(); };
+          im.src = `./captures/${name}`;
+        }),
+    ),
+  );
+}
+
+const el = (id) => document.getElementById(id);
+
+function setCardTransform(card, rx, ry, rz, scale, tx, ty, blurPx = 0) {
+  card.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg) scale(${scale.toFixed(4)})`;
+  card.style.filter = blurPx > 0.15 ? `blur(${blurPx.toFixed(2)}px)` : 'none';
+}
+
+function showImgPair(srcA, srcB, blend) {
+  const imgA = el('imgA');
+  const imgB = el('imgB');
+  const fullA = IMG_CACHE[srcA] || `./captures/${srcA}`;
+  const fullB = IMG_CACHE[srcB] || `./captures/${srcB}`;
+  if (imgA.dataset.src !== fullA) { imgA.src = fullA; imgA.dataset.src = fullA; }
+  if (imgB.dataset.src !== fullB) { imgB.src = fullB; imgB.dataset.src = fullB; }
+  imgB.style.opacity = clamp(blend).toFixed(3);
+}
+
+function setFloating(id, eye, val, sub, cls, showProg, xPx, yPx, side = 1) {
+  const box = el(id);
+  box.style.opacity = clamp(showProg).toFixed(3);
+  const dx = (1 - easeSpring(showProg)) * 70 * side;
+  box.style.left = `${xPx}px`;
+  box.style.top = `${yPx}px`;
+  box.style.transform = `translate3d(${dx.toFixed(1)}px, 0, 0) scale(${(0.92 + 0.08 * easeOutCubic(showProg)).toFixed(3)})`;
+  const prefix = id === 'floatLeft' ? 'fl' : 'fr';
+  el(prefix + 'Eye').textContent = eye;
+  el(prefix + 'Eye').className = `fc-eyebrow ${cls}`;
+  el(prefix + 'Val').textContent = val;
+  el(prefix + 'Sub').textContent = sub;
+}
+
+function setCursor(show, xPx, yPx, clickT = -1) {
+  const c = el('cursorEl');
+  const r = el('rippleEl');
+  if (!show) {
+    c.style.opacity = '0';
+    r.style.opacity = '0';
+    return;
+  }
+  c.style.opacity = '1';
+  const tapScale = clickT >= 0 && clickT < 0.28 ? 1 - 0.18 * Math.sin((clickT / 0.28) * Math.PI) : 1;
+  c.style.transform = `translate3d(${xPx.toFixed(1)}px, ${yPx.toFixed(1)}px, 0) scale(${tapScale.toFixed(3)})`;
+  if (clickT >= 0 && clickT < 0.65) {
+    const p = clamp(clickT / 0.65);
+    r.style.left = `${xPx + 6}px`;
+    r.style.top = `${yPx + 6}px`;
+    r.style.opacity = (1 - easeOutCubic(p)).toFixed(3);
+    r.style.transform = `translate(-50%, -50%) scale(${(0.8 + 3.4 * easeOutCubic(p)).toFixed(2)})`;
+  } else {
+    r.style.opacity = '0';
+  }
+}
+
+function cardPt(anchor, scale, tx, ty) {
+  const cx = anchor ? anchor.cx : 0.5;
+  const cy = anchor ? anchor.cy : 0.5;
+  const dx = (cx - 0.5) * 1480;
+  const dy = 36 + cy * 832.5 - 416.25;
+  return {
+    x: 960 + tx + dx * scale,
+    y: 540 + ty + dy * scale,
+  };
+}
+
+window.renderAt = async (tSec) => {
+  await loadAssets();
+  const acts = TIMELINE.acts;
+  const [a0, a1, a2, a3, a4, a5] = acts;
+
+  // Ambient studio drift & light sweep
+  el('gridFloor').style.transform = `translate3d(${Math.sin(tSec * 0.25) * 18}px, ${Math.cos(tSec * 0.2) * 14}px, 0)`;
+  el('orb1').style.transform = `translate3d(${Math.sin(tSec * 0.35) * 65}px, ${Math.cos(tSec * 0.28) * 45}px, 0)`;
+  el('orb2').style.transform = `translate3d(${Math.cos(tSec * 0.3) * 70}px, ${Math.sin(tSec * 0.25) * 55}px, 0)`;
+
+  const specX = ((tSec * 24) % 160) - 80;
+  el('mainSpecular').style.transform = `translateX(${specX}%)`;
+  el('splitSpecular').style.transform = `translateX(${specX}%)`;
+
+  // Default visibilities
+  el('splitWrap').style.display = 'none';
+  el('mainWorld').style.display = 'flex';
+  el('receiptStage').style.display = 'none';
+  el('heroSplash').style.opacity = '0';
+  el('hudCallout').style.opacity = '0';
+  el('floatLeft').style.opacity = '0';
+  el('floatRight').style.opacity = '0';
+  setCursor(false, 960, 540);
+
+  if (tSec < a0.end) {
+    // ============ ACT 0: BEFORE / AFTER VIRAL SPLIT HOOK ============
+    el('chapterText').textContent = a0.title.toUpperCase();
+    el('captionBar').textContent = 'From flat 2D chatbots to 6-layer hardware-grade Rust AI security.';
+
+    const wipeStart = a0.end - 2.6;
+    if (tSec < wipeStart) {
+      el('splitWrap').style.display = 'block';
+      el('mainWorld').style.display = 'none';
+      const u = tSec;
+      const rx = 14.5 - 2.5 * Math.sin(u * 0.9);
+      const ry = -12 + 3.5 * Math.sin(u * 0.7);
+      const sc = 0.92 + 0.05 * easeOutCubic(seg(u, 0, 2.5)) + (u > 1.85 ? 0.04 * easeSpring((u - 1.85) * 2) : 0);
+      setCardTransform(el('splitAfterCard'), rx, ry, 0.8, sc, 20 * Math.sin(u * 0.5), 14, 0);
+
+      // Oversized spring cursor swooping in bottom pane
+      const curP = seg(u, 0.6, 1.85);
+      const cx = lerp(1420, 860, easeSpring(curP));
+      const cy = lerp(980, 680, easeSpring(curP));
+      setCursor(u > 0.4, cx, cy, u >= 1.85 ? u - 1.85 : -1);
+    } else {
+      // Smooth upward wipe + hero splash transition into Act 1
+      const w = easeInOutCubic(seg(tSec, wipeStart, wipeStart + 0.85));
+      el('splitWrap').style.display = w < 0.98 ? 'block' : 'none';
+      el('beforePane').style.transform = `translateY(${(-w * 520).toFixed(1)}px)`;
+      el('splitDivider').style.transform = `translateY(${(-w * 520).toFixed(1)}px)`;
+      el('pillBefore').style.opacity = (1 - w).toFixed(2);
+      el('pillAfter').style.opacity = (1 - w).toFixed(2);
+      el('splitWrap').style.opacity = (1 - w).toFixed(2);
+
+      showImgPair('01_overview_initial.png', '10_overview_live.png', seg(tSec, wipeStart, a0.end));
+      const splashProg = Math.sin(seg(tSec, wipeStart + 0.35, a0.end) * Math.PI);
+      el('heroSplash').style.opacity = clamp(splashProg * 1.15).toFixed(3);
+      el('hsTitle').textContent = 'AegisMesh v2.0';
+      el('hsSub').textContent = 'Six-Layer Fintech Agentic AI Firewall & RBI Compliance SaaS';
+      setCardTransform(el('mainCard'), 8 * (1 - w), -6 * (1 - w), 0, lerp(0.84, 0.96, w), 0, 12, Math.sin(w * Math.PI) * 3.2);
+    }
+
+  } else if (tSec < a1.end) {
+    // ============ ACT 1: OVERVIEW & 37us RUST TELEMETRY MESH ============
+    const lt = tSec - a1.start;
+    el('chapterText').textContent = a1.title.toUpperCase();
+    el('urlPill').textContent = 'https://aegismesh-asia-south1.run.app // overview';
+    el('captionBar').textContent = '37 µs inline Rust core inspects prompts & vaults Indian PII under DPDP Act 2023.';
+    showImgPair('01_overview_initial.png', '10_overview_live.png', easeInOutCubic(seg(lt, 0.5, 2.2)));
+
+    const zoomP = easeInOutCubic(seg(lt, 1.4, 3.0));
+    const panBack = easeInOutCubic(seg(lt, 4.6, a1.duration - 0.5));
+    const rx = lerp(9, 4, zoomP);
+    const ry = lerp(7, -6, easeInOutCubic(seg(lt, 0, a1.duration)));
+    const scale = lerp(0.95, 1.24, zoomP) - 0.16 * panBack;
+    const tx = lerp(-20, -40, zoomP);
+    const ty = lerp(18, 85, zoomP);
+    const blur = (lt > 1.35 && lt < 1.9) ? 2.4 * Math.sin(((lt - 1.35) / 0.55) * Math.PI) : 0;
+    setCardTransform(el('mainCard'), rx, ry, -0.5, scale, tx, ty, blur);
+
+    setFloating('floatLeft', 'RUST CORE BENCHMARK', '36.9 µs Avg', '26,643 ops/sec · 5,000 runs', '', seg(lt, 0.8, 1.5), 62, 170, -1);
+    setFloating('floatRight', 'DPDP ACT 2023 VAULT', 'PAN · Aadhaar · UPI', '128-bit UUID isolation', 'indigo', seg(lt, 1.6, 2.3), 1565, 680, 1);
+
+    // Cursor targets nav_sandbox before transition
+    const curP = seg(lt, 3.0, 4.2);
+    const pt = cardPt(ANCHORS.nav_sandbox, scale, tx, ty);
+    setCursor(lt > 2.8, lerp(920, pt.x, easeSpring(curP)), lerp(560, pt.y, easeSpring(curP)), lt >= 4.2 ? lt - 4.2 : -1);
+
+  } else if (tSec < a2.end) {
+    // ============ ACT 2: ATTACK SANDBOX & GEMINI DECISION 1 ============
+    const lt = tSec - a2.start;
+    el('chapterText').textContent = a2.title.toUpperCase();
+    el('urlPill').textContent = 'https://aegismesh-asia-south1.run.app // attack-sandbox';
+    el('captionBar').textContent = 'XSS & Base64 stopped at L1; Gemini Decision 1 gates RBI coercion with 0 output tokens.';
+
+    const cross = easeInOutCubic(seg(lt, 6.2, 6.9));
+    showImgPair('02_sandbox_xss.png', '03_sandbox_coercion.png', cross);
+
+    // Z-axis punch-in on X-Ray Diff
+    const punch1 = easeInOutCubic(seg(lt, 1.8, 3.2));
+    const shift2 = easeInOutCubic(seg(lt, 5.8, 7.6));
+    const scale = lerp(0.96, 1.46, punch1) - 0.14 * shift2;
+    const tx = lerp(0, -195, punch1) + 95 * shift2;
+    const ty = lerp(10, -35, punch1) + 15 * shift2;
+    const blur = ((lt > 2.1 && lt < 2.65) || (lt > 6.1 && lt < 6.6)) ? 2.8 : 0;
+    setCardTransform(el('mainCard'), lerp(8, 3, punch1), lerp(-8, 6, shift2), 0, scale, tx, ty, blur);
+
+    // 3D HUD Callout pointing directly at blocked X-Ray output
+    const hudVis = seg(lt, 2.4, 3.0) * (1 - seg(lt, 8.2, 8.8));
+    const xrayPt = cardPt(ANCHORS.sandbox_xray, scale, tx, ty);
+    el('hudCallout').style.opacity = clamp(hudVis).toFixed(2);
+    el('hudCallout').style.left = `${Math.min(1380, xrayPt.x - 160).toFixed(0)}px`;
+    el('hudCallout').style.top = `${clamp(xrayPt.y - 120, 140, 820).toFixed(0)}px`;
+    el('hudText').textContent = cross < 0.5 ? 'L1 BLOCKED: <img onerror> + Base64 Payload' : 'L3 GEMINI_DECISIONS_API: P(inj) = 0.99';
+
+    setFloating('floatLeft', 'INLINE GUARDRAIL L1', 'ZERO SCRIPT EXEC', 'Escaped XSS + Base64 decode', 'crimson', seg(lt, 1.1, 1.8), 64, 710, -1);
+    setFloating('floatRight', 'GOOGLE GEMINI L3', 'gemini-decision-1', 'noul=0.99 · critical_violation', 'indigo', seg(lt, 6.4, 7.2), 1560, 175, 1);
+
+    const xssPt = cardPt(ANCHORS.sandbox_xss_btn, scale, tx, ty);
+    const execPt = cardPt(ANCHORS.sandbox_exec_btn, scale, tx, ty);
+    if (lt < 3.5) {
+      const p = seg(lt, 0.7, 1.85);
+      setCursor(true, lerp(820, xssPt.x, easeSpring(p)), lerp(440, xssPt.y, easeSpring(p)), lt >= 1.85 ? lt - 1.85 : -1);
+    } else if (lt > 5.0) {
+      const p = seg(lt, 5.2, 6.4);
+      setCursor(true, lerp(780, execPt.x, easeSpring(p)), lerp(560, execPt.y, easeSpring(p)), lt >= 6.4 ? lt - 6.4 : -1);
+    }
+
+  } else if (tSec < a3.end) {
+    // ============ ACT 3: CHATS, RBI ₹25K BREAKER & MAKER-CHECKER ============
+    const lt = tSec - a3.start;
+    el('chapterText').textContent = a3.title.toUpperCase();
+    el('urlPill').textContent = 'https://aegismesh-asia-south1.run.app // chats-override';
+    el('captionBar').textContent = 'Layer 4 halts ₹25,000 payout > ₹5,000 RBI cap — officers confirm via Maker-Checker.';
+
+    if (lt < 4.5) {
+      showImgPair('04_chats_pending.png', '05_chats_modal.png', easeInOutCubic(seg(lt, 2.25, 2.75)));
+    } else {
+      showImgPair('05_chats_modal.png', '06_chats_approved.png', easeInOutCubic(seg(lt, 6.85, 7.35)));
+    }
+
+    const push1 = easeInOutCubic(seg(lt, 0.8, 2.1));
+    const focusModal = easeInOutCubic(seg(lt, 2.4, 3.6));
+    const pullApproved = easeInOutCubic(seg(lt, 6.9, 8.2));
+    const scale = lerp(0.95, 1.28, push1) + 0.14 * Math.sin(focusModal * Math.PI) - 0.18 * pullApproved;
+    const tx = 0;
+    const ty = lerp(12, -18, push1) + 20 * pullApproved;
+    const rx = lerp(10, 4, focusModal) + 3 * pullApproved;
+    const ry = lerp(6, -7, pullApproved);
+    const blur = (lt > 4.55 && lt < 5.05) ? 2.4 : 0;
+    setCardTransform(el('mainCard'), rx, ry, 0, scale, tx, ty, blur);
+
+    setFloating('floatLeft', 'LAYER 4 RBI BREAKER', '₹25,000 HELD', 'Exceeds ₹5,000 auto-refund cap', 'crimson', seg(lt, 0.6, 1.3), 62, 680, -1);
+    setFloating('floatRight', 'LEDGER SETTLED', 'Balance +₹25,000', 'Audit-logged Maker-Checker + Staff', '', seg(lt, 7.1, 7.8), 1560, 175, 1);
+
+    const appPt = cardPt(ANCHORS.chats_approve_btn, scale, tx, ty);
+    const confPt = cardPt(ANCHORS.chats_confirm_btn, scale, tx, ty);
+    if (lt < 3.6) {
+      const p = seg(lt, 1.0, 2.15);
+      setCursor(true, lerp(620, appPt.x, easeSpring(p)), lerp(490, appPt.y, easeSpring(p)), lt >= 2.15 ? lt - 2.15 : -1);
+    } else if (lt > 5.4 && lt < 8.4) {
+      const p = seg(lt, 5.5, 6.8);
+      setCursor(true, lerp(890, confPt.x, easeSpring(p)), lerp(430, confPt.y, easeSpring(p)), lt >= 6.8 ? lt - 6.8 : -1);
+    }
+
+  } else if (tSec < a4.end) {
+    // ============ ACT 4: ASYNC SENTINEL + 3-MODEL ENGINE + CMD K ============
+    const lt = tSec - a4.start;
+    el('chapterText').textContent = a4.title.toUpperCase();
+    el('urlPill').textContent = 'https://aegismesh-asia-south1.run.app // sentinel & settings';
+    el('captionBar').textContent = 'Async Layer 6 gemini-3-flash-preview audits multi-turn drift off the customer hot path.';
+
+    if (lt < 6.8) {
+      showImgPair('07_sentinel.png', '08_settings.png', easeInOutCubic(seg(lt, 3.6, 4.3)));
+    } else {
+      showImgPair('08_settings.png', '09_palette.png', easeInOutCubic(seg(lt, 7.4, 7.95)));
+    }
+
+    const turn = easeInOutCubic(seg(lt, 3.5, 4.8));
+    const cmdFocus = easeInOutCubic(seg(lt, 7.3, 8.6));
+    const rx = lerp(8, 5, turn) - 3 * cmdFocus;
+    const ry = lerp(-9, 8, turn) - 8 * cmdFocus;
+    const scale = lerp(0.98, 1.18, turn) + 0.16 * cmdFocus;
+    const blur = (lt > 3.65 && lt < 4.15) ? 2.5 : 0;
+    setCardTransform(el('mainCard'), rx, ry, 0.4 * (1 - turn), scale, 0, lerp(10, 0, cmdFocus), blur);
+
+    setFloating('floatLeft', 'ASYNC SENTINEL L6', 'RBI GRADE AAA', 'Non-blocking Tokio trajectory watch', 'indigo', seg(lt, 0.6, 1.4), 64, 175, -1);
+    setFloating('floatRight', '3-MODEL GEMINI STACK', 'Lite · Decision-1 · Flash', 'Role-tuned from .env & UI', '', seg(lt, 4.2, 5.0), 1545, 700, 1);
+
+  } else {
+    // ============ ACT 5: TACTILE RBI RECEIPT REVEAL + HERO FINALE ============
+    const lt = tSec - a5.start;
+    el('chapterText').textContent = a5.title.toUpperCase();
+    el('urlPill').textContent = 'aegismesh-asia-south1.run.app // immutable-audit';
+    el('captionBar').textContent = 'Single Windows .exe or one-command Google Cloud Run deployment in asia-south1.';
+
+    showImgPair('10_overview_live.png', '10_overview_live.png', 1);
+    const fadeBg = easeOutCubic(seg(lt, 0, 1.2));
+    setCardTransform(el('mainCard'), 16, -12, -1, 0.86, -340 * fadeBg, 40, 2.5 * fadeBg);
+    el('mainCard').style.opacity = lerp(1, 0.35, fadeBg).toFixed(2);
+
+    // Physical compliance receipt sliding out of printer slot (0.85s -> 3.6s)
+    const finaleBlend = easeInOutCubic(seg(lt, 5.3, 6.4));
+    if (finaleBlend < 0.99) {
+      el('receiptStage').style.display = 'flex';
+      const printP = easeOutCubic(seg(lt, 1.1, 3.65));
+      const slideY = lerp(-590, 22, printP);
+      const tiltPaper = lerp(8, 1.5, printP);
+      el('receiptPaper').style.transform = `translateY(${slideY.toFixed(1)}px) rotateX(${tiltPaper.toFixed(2)}deg)`;
+      const rSpec = lerp(-120, 140, seg(lt, 1.8, 4.5));
+      el('receiptSpecular').style.transform = `translateX(${rSpec.toFixed(1)}%)`;
+      el('printerHousing').style.opacity = (1 - finaleBlend).toFixed(2);
+      el('printerHousing').style.transform = `translateY(${(-finaleBlend * 40).toFixed(1)}px) scale(${(1 - 0.08 * finaleBlend).toFixed(3)})`;
+    }
+
+    if (finaleBlend > 0.01) {
+      el('heroSplash').style.opacity = finaleBlend.toFixed(3);
+      el('hsKicker').textContent = 'PRODUCTION READY // GOOGLE CLOUD RUN & WINDOWS .EXE';
+      el('hsTitle').textContent = 'Deploy AegisMesh.';
+      el('hsSub').textContent = '37 µs Inline Rust Security · 3-Model Gemini AI · Zero PII Leakage';
+      el('heroSplash').style.transform = `scale(${lerp(0.93, 1.0, finaleBlend).toFixed(3)})`;
+    }
+  }
+};
+</script>
+</body>
+</html>

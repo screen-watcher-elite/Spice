@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LayerReport } from '../api';
-  import { Shield, EyeOff, Brain, Scale, Lock, Radar } from 'lucide-svelte';
+  import { fmtUs, toneForLayer } from '../ui';
+  import { ScanText, Fingerprint, Sparkles, Scale, ShieldCheck, Radar } from 'lucide-svelte';
 
   interface Props {
     layers?: LayerReport[];
@@ -10,178 +11,317 @@
   let { layers = [], shieldActive = true, compact = false }: Props = $props();
 
   const defaults = [
-    { layer: 1, name: 'Regex & Normalizer', sub: 'Unicode, Base64, Injection' },
-    { layer: 2, name: 'DPDP PII Vault', sub: 'PAN, Aadhaar, Card, UPI' },
-    { layer: 3, name: 'Gemini Decisions', sub: 'Zero-Token AI Guardrail' },
-    { layer: 4, name: 'RBI Circuit Breaker', sub: 'Caps, Smurfing, IDOR, KYC' },
-    { layer: 5, name: 'Outbound Firewall', sub: 'Egress Scrub & Leak Check' },
-    { layer: 6, name: 'Async AI Sentinel', sub: 'Trajectory Watch & Revert' },
+    { layer: 1, name: 'Normalizer', sub: 'Unicode · Base64 · injection regex' },
+    { layer: 2, name: 'PII Vault', sub: 'PAN · Aadhaar · card · UPI tokenized' },
+    { layer: 3, name: 'Gemini Decisions', sub: 'Zero-token semantic guardrail' },
+    { layer: 4, name: 'Circuit Breaker', sub: 'RBI caps · smurfing · IDOR · KYC' },
+    { layer: 5, name: 'Egress Firewall', sub: 'Outbound scrub & leak check' },
+    { layer: 6, name: 'AI Sentinel', sub: 'Async trajectory watch & revert' },
   ];
 
-  function findReport(layerNum: number): LayerReport | undefined {
-    return layers.find((l) => l.layer === layerNum);
-  }
+  const byLayer = $derived(new Map(layers.map((l) => [l.layer, l])));
+  const cascadeKey = $derived(layers.map((l) => `${l.layer}${l.status}${l.latency_us}`).join('|'));
 
-  function statusClass(rep?: LayerReport): string {
+  function stateOf(rep?: LayerReport): string {
     if (!shieldActive) return 'bypassed';
     if (!rep) return 'idle';
-    switch (rep.status) {
-      case 'BLOCKED':
-        return 'blocked';
-      case 'HELD':
-      case 'MASKED':
-      case 'ALERT':
-        return 'amber';
-      case 'SKIPPED':
-        return 'idle';
-      default:
-        return 'pass';
-    }
-  }
-
-  function fmtUs(us?: number): string {
-    if (us === undefined) return '—';
-    if (us >= 1000) return `${(us / 1000).toFixed(2)}ms`;
-    return `${us}µs`;
+    return toneForLayer(rep.status);
   }
 </script>
 
-<div class="pipeline-grid" class:compact>
-  {#each defaults as item, idx}
-    {@const rep = findReport(item.layer)}
-    {@const st = statusClass(rep)}
-    <div class="node {st}" style="animation-delay: {idx * 45}ms">
-      <div class="node-top">
-        <span class="layer-badge">L{item.layer}</span>
-        <span class="icon-wrap">
-          {#if item.layer === 1}<Shield size={14} />
-          {:else if item.layer === 2}<EyeOff size={14} />
-          {:else if item.layer === 3}<Brain size={14} />
-          {:else if item.layer === 4}<Scale size={14} />
-          {:else if item.layer === 5}<Lock size={14} />
-          {:else}<Radar size={14} />{/if}
-        </span>
-        <span class="latency mono">{rep ? fmtUs(rep.latency_us) : 'ready'}</span>
+{#snippet icon(n: number, size: number)}
+  {#if n === 1}<ScanText {size} strokeWidth={1.6} />
+  {:else if n === 2}<Fingerprint {size} strokeWidth={1.6} />
+  {:else if n === 3}<Sparkles {size} strokeWidth={1.6} />
+  {:else if n === 4}<Scale {size} strokeWidth={1.6} />
+  {:else if n === 5}<ShieldCheck {size} strokeWidth={1.6} />
+  {:else}<Radar {size} strokeWidth={1.6} />{/if}
+{/snippet}
+
+{#key cascadeKey}
+  {#if compact}
+    <ol class="vlist">
+      {#each defaults as item, idx}
+        {@const rep = byLayer.get(item.layer)}
+        {@const st = stateOf(rep)}
+        <li class="vrow s-{st}" style="--i: {idx}">
+          <div class="vrail">
+            <span class="vorb">{@render icon(item.layer, 13)}</span>
+          </div>
+          <div class="vbody">
+            <div class="vtop">
+              <span class="mono lnum">L{item.layer}</span>
+              <span class="vname">{item.name}</span>
+              {#if rep}
+                <span class="tag {st === 'mute' ? '' : st}">{rep.status}</span>
+              {:else if !shieldActive}
+                <span class="tag danger">OFF</span>
+              {/if}
+              <span class="mono vlat">{rep ? fmtUs(rep.latency_us) : '—'}</span>
+            </div>
+            <div class="vdetail">{rep ? rep.detail : item.sub}</div>
+          </div>
+        </li>
+      {/each}
+    </ol>
+  {:else}
+    <div class="mesh" class:off={!shieldActive}>
+      <div class="track" aria-hidden="true">
+        {#if shieldActive}<span class="beam"></span>{/if}
       </div>
-      <div class="node-title">{item.name}</div>
-      <div class="node-sub">{rep ? rep.detail : item.sub}</div>
-      {#if idx < defaults.length - 1}
-        <div class="connector" aria-hidden="true">
-          <div class="packet"></div>
-        </div>
-      {/if}
+      <ol class="nodes">
+        {#each defaults as item, idx}
+          {@const rep = byLayer.get(item.layer)}
+          {@const st = stateOf(rep)}
+          <li class="node s-{st}" style="--i: {idx}">
+            <div class="orb">
+              <span class="ring"></span>
+              {@render icon(item.layer, 16)}
+            </div>
+            <div class="meta">
+              <div class="row">
+                <span class="mono lnum">L{item.layer}</span>
+                <span class="mono lat">{rep ? fmtUs(rep.latency_us) : shieldActive ? 'ready' : 'off'}</span>
+              </div>
+              <div class="name">{item.name}</div>
+              <div class="detail">{rep ? rep.detail : item.sub}</div>
+            </div>
+          </li>
+        {/each}
+      </ol>
     </div>
-  {/each}
-</div>
+  {/if}
+{/key}
 
 <style>
-  .pipeline-grid {
+  /* ---------- state colors ---------- */
+  .s-ok { --c: var(--accent); --c-rgb: var(--accent-rgb); }
+  .s-warn { --c: var(--warn); --c-rgb: var(--warn-rgb); }
+  .s-danger { --c: var(--danger); --c-rgb: var(--danger-rgb); }
+  .s-idle,
+  .s-mute { --c: var(--fg-3); --c-rgb: 107, 107, 118; }
+  .s-bypassed { --c: var(--danger); --c-rgb: var(--danger-rgb); }
+
+  /* ---------- horizontal mesh ---------- */
+  .mesh {
+    position: relative;
+  }
+  .track {
+    position: absolute;
+    top: 21px;
+    left: calc(100% / 12);
+    right: calc(100% / 12);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--line-3) 6%, var(--line-3) 94%, transparent);
+    overflow: hidden;
+  }
+  .mesh.off .track {
+    background: repeating-linear-gradient(90deg, rgba(var(--danger-rgb), 0.5) 0 4px, transparent 4px 9px);
+  }
+  .beam {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 18%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    box-shadow: 0 0 12px 1px rgba(var(--accent-rgb), 0.6);
+    animation: travel 2.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  }
+  @keyframes travel {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(560%); }
+  }
+
+  .nodes {
+    position: relative;
+    list-style: none;
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 10px;
-    position: relative;
-  }
-  .pipeline-grid.compact {
-    gap: 8px;
+    gap: 12px;
   }
   .node {
-    position: relative;
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 11px 12px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    transition: transform 180ms var(--ease-out), border-color 180ms ease, background 180ms ease;
-  }
-  .node:hover {
-    transform: translateY(-2px);
-    border-color: var(--border-bright);
-  }
-  .node.pass {
-    border-color: rgba(16, 185, 129, 0.35);
-    background: linear-gradient(180deg, rgba(16, 185, 129, 0.06), var(--bg-2));
-  }
-  .node.amber {
-    border-color: rgba(245, 158, 11, 0.42);
-    background: linear-gradient(180deg, rgba(245, 158, 11, 0.08), var(--bg-2));
-  }
-  .node.blocked {
-    border-color: rgba(244, 63, 94, 0.55);
-    background: linear-gradient(180deg, rgba(244, 63, 94, 0.12), var(--bg-2));
-  }
-  .node.bypassed {
-    border-color: rgba(244, 63, 94, 0.35);
-    opacity: 0.65;
-  }
-  .node-top {
-    display: flex;
     align-items: center;
-    gap: 6px;
+    text-align: center;
+    gap: 14px;
+    animation: rise 500ms var(--ease) both;
+    animation-delay: calc(var(--i) * 70ms);
   }
-  .layer-badge {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: rgba(34, 211, 238, 0.12);
-    color: var(--cyan);
+  .orb {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    color: var(--c);
+    background: radial-gradient(circle at 50% 30%, rgba(var(--c-rgb), 0.16), var(--orb-bg) 70%);
+    border: 1px solid rgba(var(--c-rgb), 0.35);
+    box-shadow: 0 0 0 4px var(--bg), 0 0 22px -4px rgba(var(--c-rgb), 0.45);
+    transition: transform 260ms var(--ease-spring);
   }
-  .node.blocked .layer-badge {
-    background: var(--crimson-dim);
-    color: var(--crimson);
+  .node:hover .orb {
+    transform: translateY(-2px) scale(1.04);
   }
-  .node.amber .layer-badge {
-    background: var(--amber-dim);
-    color: var(--amber);
+  .s-idle .orb {
+    background: var(--bg-2);
+    border-color: var(--line-2);
+    box-shadow: 0 0 0 4px var(--bg);
   }
-  .icon-wrap {
-    color: var(--text-1);
-    display: inline-flex;
+  .s-bypassed .orb {
+    background: var(--bg-1);
+    border-style: dashed;
+    opacity: 0.7;
+    box-shadow: 0 0 0 4px var(--bg);
   }
-  .latency {
-    margin-left: auto;
+  .ring {
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border: 1px solid var(--c);
+    opacity: 0;
+    animation: flash 900ms var(--ease) both;
+    animation-delay: calc(var(--i) * 110ms + 150ms);
+  }
+  .s-idle .ring,
+  .s-bypassed .ring {
+    display: none;
+  }
+  @keyframes flash {
+    0% { opacity: 0.9; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.5); }
+  }
+  .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    width: 100%;
+  }
+  .row {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
     font-size: 10.5px;
-    color: var(--text-1);
   }
-  .node-title {
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--text-0);
+  .lnum {
+    color: var(--fg-3);
   }
-  .node-sub {
-    font-size: 11px;
-    color: var(--text-1);
+  .lat {
+    color: var(--c);
+  }
+  .s-idle .lat {
+    color: var(--fg-3);
+  }
+  .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .detail {
+    font-size: 11.5px;
+    color: var(--fg-3);
+    line-height: 1.45;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    padding: 0 4px;
   }
-  .connector {
-    position: absolute;
-    right: -11px;
-    top: 50%;
-    width: 11px;
-    height: 2px;
-    background: rgba(34, 211, 238, 0.22);
-    overflow: hidden;
-    z-index: 2;
-  }
-  .packet {
-    width: 6px;
-    height: 2px;
-    background: var(--cyan);
-    animation: packet-flow 2.2s linear infinite;
-  }
-  @media (max-width: 1180px) {
-    .pipeline-grid {
+
+  @media (max-width: 1080px) {
+    .nodes {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+      row-gap: 26px;
     }
-    .connector {
+    .track {
       display: none;
     }
+  }
+
+  /* ---------- vertical (compact) ---------- */
+  .vlist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .vrow {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 12px;
+    animation: rise 420ms var(--ease) both;
+    animation-delay: calc(var(--i) * 60ms);
+  }
+  .vrail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .vrail::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: var(--line-2);
+  }
+  .vrow:first-child .vrail::before {
+    top: 14px;
+  }
+  .vrow:last-child .vrail::before {
+    bottom: calc(100% - 14px);
+  }
+  .vorb {
+    position: relative;
+    z-index: 1;
+    margin-top: 1px;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    color: var(--c);
+    background: var(--bg-1);
+    border: 1px solid rgba(var(--c-rgb), 0.35);
+    box-shadow: 0 0 16px -4px rgba(var(--c-rgb), 0.5);
+  }
+  .s-idle .vorb {
+    border-color: var(--line-2);
+    box-shadow: none;
+  }
+  .s-bypassed .vorb {
+    border-style: dashed;
+  }
+  .vbody {
+    padding: 4px 0 16px;
+    min-width: 0;
+  }
+  .vtop {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .vname {
+    font-weight: 500;
+    font-size: 13px;
+  }
+  .vlat {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--c);
+  }
+  .s-idle .vlat {
+    color: var(--fg-3);
+  }
+  .vdetail {
+    font-size: 12px;
+    color: var(--fg-3);
+    margin-top: 2px;
+    line-height: 1.45;
   }
 </style>

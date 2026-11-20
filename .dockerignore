@@ -1,0 +1,17 @@
+.git
+.gitignore
+target/
+dist/
+frontend/node_modules/
+frontend/dist/
+.env
+.env.*
+!.env.example
+aegismesh.local.toml
+database/aegismesh_state.db*
+database/moneymax.db-*
+demo/
+demo_studio/
+*.log
+.DS_Store
+Thumbs.db

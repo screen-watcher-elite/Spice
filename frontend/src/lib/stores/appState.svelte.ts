@@ -15,6 +15,11 @@ class AppStore {
   sseConnected = $state<boolean>(false);
   adminVerified = $state<boolean>(false);
   quickStartDismissed = $state<boolean>(false);
+  showAdminPopover = $state<boolean>(false);
+  focusSessionId = $state<string | null>(null);
+  focusChatsFilter = $state<string | null>(null);
+  revision = $state<number>(0);
+  theme = $state<'dark' | 'light'>('dark');
 
   shieldStatus = $state<ShieldStatus | null>(null);
   stats = $state<TelemetryStats>({
@@ -40,12 +45,59 @@ class AppStore {
   private es: EventSource | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('aegismesh_theme');
+      if (saved === 'light' || saved === 'dark') {
+        this.theme = saved;
+      }
+      this.applyThemeDom();
+    }
+  }
+
+  applyThemeDom() {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = this.theme;
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', this.theme === 'light' ? '#f3f4f7' : '#060607');
+    }
+  }
+
+  toggleTheme() {
+    this.theme = this.theme === 'dark' ? 'light' : 'dark';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('aegismesh_theme', this.theme);
+    }
+    this.applyThemeDom();
+  }
+
   pushToast(kind: ToastItem['kind'], title: string, detail?: string) {
     const id = Math.random().toString(36).slice(2, 9);
     this.toasts = [{ id, kind, title, detail }, ...this.toasts].slice(0, 4);
     setTimeout(() => {
       this.toasts = this.toasts.filter((t) => t.id !== id);
     }, 4500);
+  }
+
+  openChatSession(sessionId: string) {
+    this.focusSessionId = sessionId;
+    this.focusChatsFilter = 'ALL';
+    this.activeTab = 'chats';
+  }
+
+  openOverridesQueue() {
+    this.focusSessionId = null;
+    this.focusChatsFilter = 'NEEDS_OVERRIDE';
+    this.activeTab = 'chats';
+  }
+
+  requestAdminUnlock(detail?: string) {
+    this.showAdminPopover = true;
+    this.pushToast(
+      'error',
+      'Admin key required',
+      detail || 'Enter AEGIS_ADMIN_KEY in the topbar to unlock staff actions.',
+    );
   }
 
   async refreshAll() {
@@ -86,6 +138,7 @@ class AppStore {
         if (ev.layers && ev.layers.length > 0) {
           this.lastLayers = ev.layers;
         }
+        this.revision += 1;
         // Refresh compact counters cleanly
         api.getShieldStatus().then((st) => {
           this.shieldStatus = st;

@@ -55,9 +55,49 @@ fn resolve_db_paths(
     db_override: Option<PathBuf>,
     state_override: Option<PathBuf>,
 ) -> (PathBuf, PathBuf) {
-    let mm_path = db_override.unwrap_or_else(|| base_dir.join("database").join("moneymax.db"));
-    let st_path = state_override.unwrap_or_else(|| base_dir.join("database").join("aegismesh_state.db"));
+    let env_db = env::var("AEGIS_DB_PATH")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    let env_state = env::var("AEGIS_STATE_DB_PATH")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
+    let mm_path = db_override
+        .or(env_db)
+        .unwrap_or_else(|| base_dir.join("database").join("moneymax.db"));
+    let st_path = state_override
+        .or(env_state)
+        .unwrap_or_else(|| base_dir.join("database").join("aegismesh_state.db"));
     (mm_path, st_path)
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut sig) = signal(SignalKind::terminate()) {
+            sig.recv().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    println!("\nShutting down AegisMesh cleanly...");
 }
 
 async fn bind_with_fallback(host: &str, preferred_port: u16) -> std::io::Result<(TcpListener, SocketAddr)> {
@@ -155,14 +195,14 @@ async fn main() {
     println!("  Core DB      : {}", mm_path.display());
     println!("  State DB     : {}", st_path.display());
     println!("  Shield State : {}", if engine.is_shield_active() { "ACTIVE (6-Layer)" } else { "BYPASSED" });
-    println!(
-        "  Gemini AI    : {}",
-        if cfg.google_ai.has_live_key() {
-            format!("LIVE ({})", cfg.google_ai.agent_model)
-        } else {
-            "OFFLINE / SIMULATOR MODE (configure key in Settings)".to_string()
-        }
-    );
+    if cfg.google_ai.has_live_key() {
+        println!("  Gemini AI    : LIVE");
+        println!("  Agent Model  : {}", cfg.google_ai.agent_model);
+        println!("  Inline L3    : {} ({:?})", cfg.google_ai.decision_model, cfg.google_ai.decisions_mode);
+        println!("  Async L6     : {}", cfg.sentinel.model);
+    } else {
+        println!("  Gemini AI    : OFFLINE / SIMULATOR MODE (configure key in Settings or .env)");
+    }
     println!("==================================================================");
     println!("  Press Ctrl+C to shut down cleanly.");
     println!();
@@ -173,10 +213,7 @@ async fn main() {
 
     let app = create_router(engine);
     axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-            println!("\nShutting down AegisMesh cleanly...");
-        })
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("Server encountered fatal error");
 }

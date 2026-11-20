@@ -1,0 +1,49 @@
+substitutions:
+  _REGION: asia-south1
+  _SERVICE_NAME: aegismesh
+  _AR_REPO: aegismesh
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:${SHORT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:${SHORT_SHA}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --port
+      - '8080'
+      - --memory
+      - 512Mi
+      - --cpu
+      - '1'
+      - --cpu-boost
+      - --allow-unauthenticated
+      - --set-env-vars
+      - GEMINI_AGENT_MODEL=gemini-3.5-flash-lite,GEMINI_DECISION_MODEL=gemini-decision-1,GEMINI_SENTINEL_MODEL=gemini-3-flash-preview,AEGIS_HOST=0.0.0.0,RUST_LOG=info
+      - --set-secrets
+      - GEMINI_API_KEY=aegismesh-gemini-api-key:latest,AEGIS_ADMIN_KEY=aegismesh-admin-key:latest
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE_NAME}:latest

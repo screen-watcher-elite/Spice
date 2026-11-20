@@ -26,7 +26,7 @@ AegisMesh is a Rust + Svelte 5 security gateway, RBI & DPDP Act 2023 compliance 
    - Scans assistant responses for system-prompt leakage and scrubs raw DB-sourced customer PII before egress, preserving only authorized session tokens in `RehydrateAuthorized` mode.
 
 6. **Layer 6 — Asynchronous AI Sentinel (`layer6_sentinel`)**
-   - Non-blocking Tokio background auditor scoring multi-turn customer/agent trajectories (via `gemini-3.1-flash-lite` or heuristic fallback), computing compliance grades (`AAA` / `AA` / `A` / `BBB`) and alignment drift scores, persisting `sentinel_audits`, streaming `SENTINEL_ALERT` SSE events, and executing active interventions (`HOLD_AND_ESCALATE`, `QUARANTINE_SESSION`, `AUTO_REVERT_PAYOUT`).
+   - Non-blocking Tokio background auditor scoring multi-turn customer/agent trajectories (via `gemini-3-flash-preview` or heuristic fallback), computing compliance grades (`AAA` / `AA` / `A` / `BBB`) and alignment drift scores, persisting `sentinel_audits`, streaming `SENTINEL_ALERT` SSE events, and executing active interventions (`HOLD_AND_ESCALATE`, `QUARANTINE_SESSION`, `AUTO_REVERT_PAYOUT`).
 
 ---
 
@@ -105,9 +105,24 @@ If `database\moneymax.db` is absent, `aegismesh.exe` automatically bootstraps a 
 # Optional flags: --force-db (overwrite existing moneymax.db), --no-shortcuts
 ```
 
-### Configuration
+### Configuration & 3-Model Gemini Architecture
 
-Copy [`aegismesh.toml.example`](aegismesh.toml.example) to `aegismesh.local.toml` (gitignored) or configure live via the **Settings** tab in the UI. Provide `GEMINI_API_KEY` via environment variable or **Settings → Google Gemini & Decisions API** to enable live Gemini 3.1 + Decisions API mode (otherwise AegisMesh runs deterministically in Offline Simulator mode).
+Copy [`aegismesh.toml.example`](aegismesh.toml.example) to `aegismesh.local.toml` (gitignored), configure via local `.env` (gitignored), or configure live in **Settings → Google Gemini & Decisions API**:
+
+- **Fintech Customer Agent (`GEMINI_AGENT_MODEL`)**: `gemini-3.5-flash-lite` (stable GA, low-cost tool-calling agent with failover to `gemini-3-flash-preview` / `gemini-3.1-flash-lite`).
+- **Inline Layer 3 Guardrail (`GEMINI_DECISION_MODEL`)**: `gemini-decision-1` via `POST /v1beta/decisions` (zero-output-token calibrated `noul` + `choice` gate).
+- **Async Layer 6 Sentinel (`GEMINI_SENTINEL_MODEL`)**: `gemini-3-flash-preview` (thinking-enabled non-blocking trajectory auditor off the customer hot path).
+
+For Paid-tier deployments, you can upgrade `GEMINI_AGENT_MODEL` to `gemini-4-hydrogen` and `GEMINI_SENTINEL_MODEL` to `gemini-4-carbon` or `gemini-4-argon`. Without `GEMINI_API_KEY`, AegisMesh runs deterministically in Offline Simulator mode.
+
+### Deploy to Google Cloud Run (Mumbai `asia-south1`)
+
+AegisMesh includes production container & Google Cloud Run deployment configuration designed for Indian fintech DPDP data residency (`asia-south1` Mumbai), listening on `0.0.0.0:$PORT`, handling `SIGTERM` graceful shutdown, and loading keys from Secret Manager:
+
+- [`Dockerfile`](Dockerfile): Multi-stage build (`node:22-slim` Svelte UI → `rust:1-bookworm` binary → `debian:bookworm-slim` non-root runtime with `/health` check).
+- [`cloudbuild.yaml`](cloudbuild.yaml): Cloud Build pipeline pushing to Artifact Registry and deploying to managed Cloud Run.
+- [`deploy/cloudrun-service.yaml`](deploy/cloudrun-service.yaml): Declarative Knative service spec with startup/liveness probes and Secret Manager refs.
+- [`scripts/deploy_gcp.ps1`](scripts/deploy_gcp.ps1) & [`scripts/deploy_gcp.sh`](scripts/deploy_gcp.sh): One-command deployment (`.\scripts\deploy_gcp.ps1 -ProjectId <YOUR_GCP_PROJECT_ID>`).
 
 ---
 

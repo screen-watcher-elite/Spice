@@ -118,7 +118,7 @@ impl AsyncSentinel {
 
         if tokio::runtime::Handle::try_current().is_ok() {
             let http = reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(20))
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -258,10 +258,6 @@ async fn call_gemini_sentinel(
     job: &SentinelJob,
 ) -> Option<SentinelEval> {
     let api_key = cfg.google_ai.api_key.as_deref()?.trim();
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-        cfg.sentinel.model
-    );
 
     let history_txt: String = job
         .recent_history
@@ -294,76 +290,122 @@ async fn call_gemini_sentinel(
         "generationConfig": {
             "responseMimeType": "application/json",
             "temperature": 0.1,
-            "maxOutputTokens": 260
+            "maxOutputTokens": 1536
         }
     });
 
-    let resp = http
-        .post(&url)
-        .query(&[("key", api_key)])
-        .json(&payload)
-        .send()
-        .await
-        .ok()?;
-    if !resp.status().is_success() {
-        return None;
+    let mut candidates: Vec<&str> = Vec::new();
+    for m in [
+        cfg.sentinel.model.as_str(),
+        "gemini-3-flash-preview",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+    ] {
+        let trimmed = m.trim();
+        if !trimmed.is_empty() && !candidates.contains(&trimmed) {
+            candidates.push(trimmed);
+        }
     }
 
-    let body: Value = resp.json().await.ok()?;
-    let text = body
-        .get("candidates")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("content"))
-        .and_then(|c| c.get("parts"))
-        .and_then(|p| p.get(0))
-        .and_then(|p| p.get("text"))
-        .and_then(|t| t.as_str())?;
+    for active_model in candidates {
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            active_model
+        );
+        let Ok(resp) = http
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&payload)
+            .send()
+            .await
+        else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
 
-    let parsed: Value = serde_json::from_str(text.trim()).ok()?;
-    let severity = parsed
-        .get("severity")
-        .and_then(|v| v.as_str())
-        .unwrap_or("LOW")
-        .to_uppercase();
-    let risk_score = parsed
-        .get("risk_score")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.05)
-        .clamp(0.0, 1.0);
-    let verdict = parsed
-        .get("verdict")
-        .and_then(|v| v.as_str())
-        .unwrap_or("COMPLIANT")
-        .to_string();
-    let intervention = parsed
-        .get("recommended_intervention")
-        .and_then(|v| v.as_str())
-        .unwrap_or("NONE")
-        .to_string();
-    let summary = parsed
-        .get("summary")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Audited by Gemini Async Sentinel.")
-        .to_string();
-    let tags = parsed
-        .get("tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
+        let Ok(body) = resp.json::<Value>().await else {
+            continue;
+        };
+        let Some(parts) = body
+            .get("candidates")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.as_array())
+        else {
+            continue;
+        };
 
-    Some(SentinelEval {
-        engine: "LIVE_GEMINI_SENTINEL".to_string(),
-        severity,
-        risk_score,
-        verdict,
-        recommended_intervention: intervention,
-        summary,
-        tags,
-    })
+        let joined: String = parts
+            .iter()
+            .filter(|p| p.get("thought").and_then(|v| v.as_bool()) != Some(true))
+            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("");
+        let t = joined.trim();
+        let without_prefix = t
+            .strip_prefix("```json")
+            .or_else(|| t.strip_prefix("```"))
+            .unwrap_or(t);
+        let cleaned = without_prefix
+            .trim()
+            .strip_suffix("```")
+            .unwrap_or(without_prefix)
+            .trim();
+
+        let Ok(parsed) = serde_json::from_str::<Value>(cleaned) else {
+            continue;
+        };
+
+        let severity = parsed
+            .get("severity")
+            .and_then(|v| v.as_str())
+            .unwrap_or("LOW")
+            .to_uppercase();
+        let risk_score = parsed
+            .get("risk_score")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.05)
+            .clamp(0.0, 1.0);
+        let verdict = parsed
+            .get("verdict")
+            .and_then(|v| v.as_str())
+            .unwrap_or("COMPLIANT")
+            .to_string();
+        let intervention = parsed
+            .get("recommended_intervention")
+            .and_then(|v| v.as_str())
+            .unwrap_or("NONE")
+            .to_string();
+        let summary = parsed
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Audited by Gemini Async Sentinel.")
+            .to_string();
+        let tags = parsed
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        return Some(SentinelEval {
+            engine: format!("LIVE_GEMINI_SENTINEL ({})", active_model),
+            severity,
+            risk_score,
+            verdict,
+            recommended_intervention: intervention,
+            summary,
+            tags,
+        });
+    }
+
+    None
 }
 
 fn evaluate_heuristic_trajectory(

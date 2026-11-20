@@ -87,14 +87,42 @@ pub fn check_admin_auth(engine: &AegisMeshEngine, headers: &HeaderMap) -> Result
     }
 }
 
+fn is_allowed_origin(origin: &str) -> bool {
+    let trimmed = origin.trim();
+    if trimmed.starts_with("http://127.0.0.1:")
+        || trimmed.starts_with("http://localhost:")
+        || trimmed == "http://127.0.0.1"
+        || trimmed == "http://localhost"
+    {
+        return true;
+    }
+
+    // Google Cloud Run HTTPS service origins (strict host parsing, no path/userinfo tricks)
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        if !rest.contains('/') && !rest.contains('@') && !rest.contains('?') {
+            let host = rest.split(':').next().unwrap_or("");
+            if (host.ends_with(".run.app") || host.ends_with(".a.run.app"))
+                && host.len() > ".run.app".len()
+            {
+                return true;
+            }
+        }
+    }
+
+    if let Ok(extra) = std::env::var("AEGIS_ALLOWED_ORIGINS") {
+        return extra
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .any(|v| v == trimmed);
+    }
+    false
+}
+
 pub fn create_router(engine: Arc<AegisMeshEngine>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _req| {
-            let s = origin.to_str().unwrap_or("");
-            s.starts_with("http://127.0.0.1:")
-                || s.starts_with("http://localhost:")
-                || s == "http://127.0.0.1"
-                || s == "http://localhost"
+            is_allowed_origin(origin.to_str().unwrap_or(""))
         }))
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS])
         .allow_headers([

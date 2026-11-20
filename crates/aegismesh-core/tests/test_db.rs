@@ -170,3 +170,54 @@ fn test_config_store_redaction() {
     });
     assert!(!store.public_view().gemini_api_key_configured);
 }
+
+#[test]
+fn test_dotenv_three_model_loading() {
+    let dir = TempDir::new().unwrap();
+    let env_file = dir.path().join(".env");
+    std::fs::write(
+        &env_file,
+        "GEMINI_API_KEY=AIzaSyTestDummyKey1234567890\n\
+         GEMINI_MODEL=gemini-3.1-flash-lite\n\
+         GEMINI_AGENT_MODEL=gemini-3.5-flash-lite\n\
+         GEMINI_DECISION_MODEL=gemini-decision-1\n\
+         GEMINI_SENTINEL_MODEL=gemini-3-flash-preview\n",
+    )
+    .unwrap();
+
+    let cfg = AegisConfig::load_from_dir(dir.path());
+    assert!(cfg.google_ai.has_live_key());
+    assert_eq!(cfg.google_ai.agent_model, "gemini-3.5-flash-lite");
+    assert_eq!(cfg.google_ai.decision_model, "gemini-decision-1");
+    assert_eq!(cfg.sentinel.model, "gemini-3-flash-preview");
+
+    // Verify legacy GEMINI_MODEL only sets agent_model and never overrides sentinel.model
+    let legacy_dir = TempDir::new().unwrap();
+    std::fs::write(
+        legacy_dir.path().join(".env"),
+        "GEMINI_API_KEY=AIzaSyTestDummyKey1234567890\nGEMINI_MODEL=gemini-3.1-flash-lite\n",
+    )
+    .unwrap();
+    let legacy_cfg = AegisConfig::load_from_dir(legacy_dir.path());
+    assert_eq!(legacy_cfg.google_ai.agent_model, "gemini-3.1-flash-lite");
+    assert_eq!(legacy_cfg.sentinel.model, "gemini-3-flash-preview");
+}
+
+#[test]
+fn test_cloud_run_env_defaults() {
+    let mut cfg = AegisConfig::default();
+    assert_eq!(cfg.server.host, "127.0.0.1");
+    assert_eq!(cfg.server.port, 8080);
+    assert!(cfg.server.auto_open_browser);
+
+    AegisConfig::apply_cloud_env(&mut cfg, None, None, Some("9090"), Some("aegismesh"));
+    assert_eq!(cfg.server.host, "0.0.0.0");
+    assert_eq!(cfg.server.port, 9090);
+    assert!(!cfg.server.auto_open_browser);
+
+    // Explicit AEGIS_HOST & AEGIS_PORT override Cloud Run fallbacks
+    let mut explicit = AegisConfig::default();
+    AegisConfig::apply_cloud_env(&mut explicit, Some("127.0.0.1"), Some("7777"), Some("9090"), Some("aegismesh"));
+    assert_eq!(explicit.server.host, "127.0.0.1");
+    assert_eq!(explicit.server.port, 7777);
+}

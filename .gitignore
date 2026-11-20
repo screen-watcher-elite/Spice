@@ -25,3 +25,11 @@ database/moneymax.db-shm
 *.log
 .DS_Store
 Thumbs.db
+
+# Generated demo renders & temporary studio assets (keep scripts reproducible)
+demo/*.mp4
+demo_studio/*.json
+demo_studio/frames/
+demo_studio/captures/
+demo_studio/audio/
+demo_studio/review/
