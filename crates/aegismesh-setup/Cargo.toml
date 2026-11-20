@@ -1,0 +1,11 @@
+[package]
+name = "aegismesh-setup"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "aegismesh-setup"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true

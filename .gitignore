@@ -1,0 +1,27 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Frontend Node / Vite build
+frontend/node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+
+# Distribution outputs
+dist/
+
+# Local secrets & runtime state (NEVER commit!)
+.env
+.env.*
+!.env.example
+aegismesh.local.toml
+database/aegismesh_state.db
+database/aegismesh_state.db-wal
+database/aegismesh_state.db-shm
+database/moneymax.db-wal
+database/moneymax.db-shm
+
+# Logs & OS junk
+*.log
+.DS_Store
+Thumbs.db

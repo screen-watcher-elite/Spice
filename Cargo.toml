@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aegismesh-core",
+    "crates/aegismesh-server",
+    "crates/aegismesh-setup",
+]
+default-members = [
+    "crates/aegismesh-core",
+    "crates/aegismesh-server",
+]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+authors = ["AegisMesh Security Engineering"]
+license = "MIT"
+
+[workspace.dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
+tower-http = { version = "0.5", features = ["cors", "trace", "set-header", "timeout", "limit"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+regex = "1.11"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+parking_lot = "0.12"
+uuid = { version = "1.11", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+sha2 = "0.10"
+clap = { version = "4.5", features = ["derive"] }
+rust-embed = "8.5"
+mime_guess = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
