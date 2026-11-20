@@ -110,28 +110,34 @@ def main():
         file_name = None
         try:
             file_name, file_uri = upload_file_resumable(api_key, proxy_mp4, 'video/mp4')
-            prompt = f"""You are a tough 3-judge Google Startup Buildathon Jury Panel (1: Principal Security Architect, 2: Apple/Linear Motion Director, 3: Sequoia/YC Partner) reviewing "{iter_label}" of the AegisMesh product demo video.
+            prompt = f"""You are a tough 3-judge Google Startup Buildathon Evaluator Panel (1: Google AI / Gemini Principal Architect, 2: Indian Fintech Risk & Compliance Lead, 3: Sequoia / Surge Demo Partner) evaluating "{iter_label}" of the AegisMesh product demo video (which must stay under 3 minutes).
 
-Watch the entire video carefully (every cut, transition, camera move, Light-Mode UI readability, unicolour studio background, cursor motion, kinetic typography, voiceover cadence, music, and SFX). Be brutally honest and constructive — do not flatter.
+Watch and listen carefully to the entire video — evaluate it strictly against the official Google Startup Buildathon rubric AND verify these specific creator requirements:
+- Problem Statement & Market Urgency (20%): Does it clearly open with the painful problem (prompt injections draining balances, raw Aadhaar/PAN leaks under DPDP penalties up to ₹250 Cr, RBI ₹5,000 cap breaches) before presenting AegisMesh as the solution?
+- Innovation & Google Gemini Integration (30%): Are Gemini Decision One (0-token inline guard), Gemini 3.5 Flash-Lite, and Async Gemini 3 Flash-Preview deeply integral rather than a thin wrapper?
+- Live Product Demo & Technical Proof (25%): Does it clearly show a live typed prompt-injection attack getting blocked alongside real product UI screens, Maker-Checker human override, and verifiable Rust microsecond performance?
+- Visual Craft, Immersion & Unicolour Readability (15%): Cohesive theme, multi-method 3D/canvas/Bento visual variety, crystal legibility, and ZERO deployment pitch (.exe / Cloud Run / Mumbai) at the ending?
+- Voice Quality, Audio Mix & Pacing (10%): Warm, natural human-sounding studio narration clearly sitting above quiet non-distracting background music, with synchronized tactile SFX and zero dead air?
 
-Provide your evaluation in this exact Markdown structure:
+Output this exact Markdown structure:
 
-## {iter_label} — Google Buildathon Jury Scorecard
-| Criterion | Score (1-10) | Crisp Rationale |
-| --- | --- | --- |
-| Hook & Serious Authority | X.X | ... |
-| Pacing & Zero Idle Time | X.X | ... |
-| Unicolour Visual Wow Factor | X.X | ... |
-| Editing, Cuts & 3D Camera Craft | X.X | ... |
-| Audio / VO / SFX Mix | X.X | ... |
-| Buildathon Pitch Impact | X.X | ... |
-| **Overall Jury Score** | **X.X / 10** | ... |
+## {iter_label} — Google Buildathon Evaluator Scorecard
+| Evaluator Pillar | Weight | Score (1-10) | Crisp Rationale |
+| --- | --- | --- | --- |
+| Problem Statement & Urgency | 20% | X.X | ... |
+| Innovation & Gemini Integration | 30% | X.X | ... |
+| Live Demo & Technical Proof | 25% | X.X | ... |
+| Visual Craft & Immersion | 15% | X.X | ... |
+| Voice, Audio Mix & Pacing | 10% | X.X | ... |
+| **Weighted Buildathon Score** | **100%** | **X.X / 10** | ... |
 
-## Timestamped Jury Critiques & Concrete Fixes Needed
-List 5 to 7 specific, timestamped (`MM:SS–MM:SS`) weaknesses ordered from highest impact to lowest impact, each with an exact actionable visual, timing, or audio fix for our motion graphics stage or audio mix."""
+**Requirement Compliance Check:** Explicitly confirm `<3m runtime`, `Zero deployment pitch in ending`, `Clear live typed attack demo`, and `Voice clarity vs background music balance`.
+
+## Timestamped Evaluator Critiques & Concrete Improvements
+List 5 specific, timestamped (`MM:SS–MM:SS`) weaknesses ordered from highest impact to lowest impact, each with an exact actionable visual, animation, timing, or audio fix."""
 
             text = None
-            for model in ['gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']:
+            for model in ['gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite']:
                 url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
                 payload = {
                     'contents': [{

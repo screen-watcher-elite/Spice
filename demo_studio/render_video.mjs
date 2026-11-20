@@ -14,7 +14,7 @@ const MASTER_WAV = path.join(STUDIO_DIR, 'audio', 'master_audio.wav');
 const TIMELINE_PATH = path.join(STUDIO_DIR, 'timeline.json');
 const CHROME_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
-const WORKERS = 4;
+const WORKERS = 6;
 const BASE_CDP_PORT = 9241;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
