@@ -528,4 +528,40 @@
       grid-template-columns: repeat(2, 1fr);
     }
   }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .hero-banner p,
+  :global(:root[data-demo='true']) .hb-actions button:first-child,
+  :global(:root[data-demo='true']) .filter-pills,
+  :global(:root[data-demo='true']) .chart-card,
+  :global(:root[data-demo='true']) .a-id,
+  :global(:root[data-demo='true']) .a-time,
+  :global(:root[data-demo='true']) .a-foot,
+  :global(:root[data-demo='true']) .audit-card:nth-child(n + 3) {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .sentinel-page {
+    gap: 18px;
+  }
+  :global(:root[data-demo='true']) .metrics-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  :global(:root[data-demo='true']) .m-card {
+    padding: 22px 24px;
+    gap: 12px;
+  }
+  :global(:root[data-demo='true']) .big {
+    font-size: 48px;
+  }
+  :global(:root[data-demo='true']) .sub {
+    font-size: 13.5px;
+  }
+  :global(:root[data-demo='true']) .audit-card {
+    padding: 18px 22px;
+    gap: 10px;
+  }
+  :global(:root[data-demo='true']) .a-summary {
+    font-size: 15.5px;
+  }
 </style>

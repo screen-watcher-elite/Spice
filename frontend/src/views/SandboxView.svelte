@@ -41,6 +41,8 @@
   let lastTurn = $state<SandboxTurn | null>(null);
   let chatHistory = $state<Array<{ role: 'user' | 'bot'; text: string; status?: string }>>([]);
 
+  const demoPresetIds = new Set<string>(['injection', 'pii_leak', 'leet_hinglish', 'xss_b64']);
+
   const presets = [
     {
       id: 'safe_refund',
@@ -189,6 +191,8 @@
           type="button"
           class="preset-card"
           class:active={activePresetId === p.id}
+          class:demo-keep={demoPresetIds.has(p.id)}
+          data-preset-id={p.id}
           onclick={() => triggerPreset(p)}
           disabled={running}
         >
@@ -746,5 +750,48 @@
     .diff-arrow {
       display: none;
     }
+  }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .pb-title .muted,
+  :global(:root[data-demo='true']) .pane-head p,
+  :global(:root[data-demo='true']) .acc-select,
+  :global(:root[data-demo='true']) .preset-card:not(.demo-keep),
+  :global(:root[data-demo='true']) .xr-col:has(.no-tools) {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .presets-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  :global(:root[data-demo='true']) .preset-card {
+    height: 44px;
+    padding: 0 14px;
+  }
+  :global(:root[data-demo='true']) .p-label {
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .split-grid {
+    grid-template-columns: 35% minmax(0, 1fr);
+    gap: 16px;
+  }
+  :global(:root[data-demo='true']) .pane-head h3 {
+    font-size: 17px;
+  }
+  :global(:root[data-demo='true']) .bubble {
+    font-size: 14.5px;
+    padding: 14px 16px;
+  }
+  :global(:root[data-demo='true']) .verdict-banner p {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .diff-box {
+    min-height: 106px;
+    font-size: 14.5px;
+  }
+  :global(:root[data-demo='true']) .xray-columns:has(.no-tools) {
+    grid-template-columns: 1fr;
   }
 </style>

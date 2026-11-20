@@ -191,7 +191,7 @@
           </label>
         </div>
 
-        <div class="switch-list">
+        <div class="switch-list demo-hide">
           <label class="sw-row">
             <div>
               <div class="sw-title">Block autonomous tools on frozen accounts</div>
@@ -286,7 +286,7 @@
           <option value="gemini-4-argon"></option>
         </datalist>
 
-        <label class="field">
+        <label class="field demo-hide">
           <div class="f-row">
             <span class="f-lbl">Google Gemini API Key</span>
             <span class="mono muted" style="font-size: 11px;">
@@ -303,7 +303,7 @@
           />
         </label>
 
-        <div class="switch-list">
+        <div class="switch-list demo-hide">
           <label class="sw-row">
             <div>
               <div class="sw-title">Enable Layer 6 Async AI Sentinel</div>
@@ -323,7 +323,7 @@
       </section>
 
       <!-- 03: DPDP PII Masking -->
-      <section class="card cfg-card">
+      <section class="card cfg-card demo-hide">
         <header class="cc-head">
           <span class="cc-ico warn"><Fingerprint size={15} /></span>
           <div>
@@ -387,7 +387,7 @@
       </section>
 
       <!-- 04: Staff Perimeter Admin Lock -->
-      <section class="card cfg-card">
+      <section class="card cfg-card demo-hide">
         <header class="cc-head">
           <span class="cc-ico staff"><KeyRound size={15} /></span>
           <div>
@@ -647,5 +647,39 @@
     .cfg-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .head-bar p,
+  :global(:root[data-demo='true']) .demo-hide {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .settings-page {
+    gap: 18px;
+  }
+  :global(:root[data-demo='true']) .head-bar h2 {
+    font-size: 20px;
+  }
+  :global(:root[data-demo='true']) .cfg-grid {
+    gap: 18px;
+  }
+  :global(:root[data-demo='true']) .cfg-card {
+    padding: 24px 26px;
+    gap: 18px;
+  }
+  :global(:root[data-demo='true']) .cc-head h3 {
+    font-size: 17px;
+  }
+  :global(:root[data-demo='true']) .field-grid {
+    gap: 14px;
+  }
+  :global(:root[data-demo='true']) .f-lbl {
+    font-size: 13px;
+  }
+  :global(:root[data-demo='true']) .input,
+  :global(:root[data-demo='true']) .select {
+    height: 44px;
+    font-size: 15.5px;
+    font-weight: 600;
   }
 </style>

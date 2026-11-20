@@ -31,6 +31,7 @@
     Download,
     Sun,
     Moon,
+    Sparkles,
     X,
   } from 'lucide-svelte';
 
@@ -64,6 +65,7 @@
   $effect(() => {
     void appState.activeTab;
     void appState.pendingOverridesCount;
+    void appState.demoMode;
     requestAnimationFrame(measure);
   });
 
@@ -166,6 +168,14 @@
       icon: appState.theme === 'dark' ? Sun : Moon,
       run: () => appState.toggleTheme(),
     },
+    {
+      id: 'demo',
+      label: appState.demoMode ? 'Exit Demo Mode (Full Telemetry)' : 'Switch to Minimal Demo Mode',
+      group: 'Appearance',
+      keys: 'D',
+      icon: Sparkles,
+      run: () => appState.toggleDemoMode(),
+    },
     { id: 'help', label: 'Keyboard shortcuts', group: 'Help', keys: '?', icon: Keyboard, run: () => (showHelp = true) },
   ]);
 
@@ -192,6 +202,10 @@
     }
     if (e.key.toLowerCase() === 't') {
       appState.toggleTheme();
+      return;
+    }
+    if (e.key.toLowerCase() === 'd') {
+      appState.toggleDemoMode();
       return;
     }
     const match = navItems.find((n) => n.key === e.key);
@@ -290,6 +304,19 @@
           <option value="Officer Mehta">Mehta</option>
         </select>
       </label>
+
+      <button
+        type="button"
+        class="demo-btn"
+        class:active={appState.demoMode}
+        onclick={() => appState.toggleDemoMode()}
+        title={appState.demoMode ? 'Exit Minimal Demo Mode (D)' : 'Enter Minimal Demo Mode (D)'}
+        aria-pressed={appState.demoMode}
+        aria-label="Toggle Minimal Demo Mode"
+      >
+        <Sparkles size={13} strokeWidth={2} />
+        <span>Demo</span>
+      </button>
 
       <button
         type="button"
@@ -464,6 +491,7 @@
       <div class="h-foot">
         <span><span class="kbd">Ctrl</span><span class="kbd">K</span> command palette</span>
         <span><span class="kbd">T</span> theme</span>
+        <span><span class="kbd">D</span> demo mode</span>
         <span><span class="kbd">?</span> this guide</span>
         <span><span class="kbd">Esc</span> close</span>
       </div>
@@ -742,6 +770,52 @@
     position: relative;
     height: 30px;
     width: 30px;
+  }
+  .demo-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--s-1);
+    color: var(--fg-3);
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 160ms var(--ease), color 160ms var(--ease), background 160ms var(--ease);
+  }
+  .demo-btn:hover {
+    border-color: var(--line-2);
+    color: var(--fg-2);
+    background: var(--s-2);
+  }
+  .demo-btn.active {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .policy,
+  :global(:root[data-demo='true']) .sep,
+  :global(:root[data-demo='true']) .cmdk,
+  :global(:root[data-demo='true']) .officer,
+  :global(:root[data-demo='true']) .admin-wrap,
+  :global(:root[data-demo='true']) .toasts {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .stage {
+    padding: 26px 34px 28px;
+  }
+  :global(:root[data-demo='true']) .wordmark {
+    font-size: 16.5px;
+  }
+  :global(:root[data-demo='true']) .nav-item {
+    font-size: 13.5px;
+    height: 34px;
+    padding: 0 14px;
   }
   .key-btn.verified {
     color: var(--accent);

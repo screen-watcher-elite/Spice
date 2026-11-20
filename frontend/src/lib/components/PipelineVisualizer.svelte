@@ -324,4 +324,31 @@
     margin-top: 2px;
     line-height: 1.45;
   }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .orb {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+  }
+  :global(:root[data-demo='true']) .track {
+    top: 25px;
+  }
+  :global(:root[data-demo='true']) .name {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .row {
+    font-size: 12px;
+  }
+  :global(:root[data-demo='true']) .detail {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .vname {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .vdetail {
+    font-size: 13.5px;
+  }
 </style>

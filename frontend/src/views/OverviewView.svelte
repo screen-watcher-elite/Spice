@@ -1097,4 +1097,52 @@
       grid-column: span 2;
     }
   }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .onboard,
+  :global(:root[data-demo='true']) .pct-cluster,
+  :global(:root[data-demo='true']) .hc-chart,
+  :global(:root[data-demo='true']) .sc-chart,
+  :global(:root[data-demo='true']) .sc-sub,
+  :global(:root[data-demo='true']) .hc-foot .muted,
+  :global(:root[data-demo='true']) .sub-hint,
+  :global(:root[data-demo='true']) .stream-controls,
+  :global(:root[data-demo='true']) .sc-meta,
+  :global(:root[data-demo='true']) .bento > .stat-card:nth-child(4) {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .overview {
+    gap: 20px;
+  }
+  :global(:root[data-demo='true']) .bento {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+  :global(:root[data-demo='true']) .hero-card,
+  :global(:root[data-demo='true']) .stat-card {
+    padding: 22px 24px;
+    gap: 12px;
+  }
+  :global(:root[data-demo='true']) .hero-num,
+  :global(:root[data-demo='true']) .sc-val {
+    font-size: 44px;
+  }
+  :global(:root[data-demo='true']) .sec-head h2 {
+    font-size: 18px;
+  }
+  :global(:root[data-demo='true']) th:nth-child(1),
+  :global(:root[data-demo='true']) td:nth-child(1),
+  :global(:root[data-demo='true']) th:nth-child(3),
+  :global(:root[data-demo='true']) td:nth-child(3),
+  :global(:root[data-demo='true']) th:nth-child(5),
+  :global(:root[data-demo='true']) td:nth-child(5),
+  :global(:root[data-demo='true']) tbody tr:nth-child(n + 5) {
+    display: none;
+  }
+  :global(:root[data-demo='true']) table {
+    font-size: 14.5px;
+  }
+  :global(:root[data-demo='true']) td {
+    padding: 13px 14px;
+  }
 </style>

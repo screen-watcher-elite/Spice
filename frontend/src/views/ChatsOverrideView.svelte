@@ -616,7 +616,7 @@
 
           <button
             type="button"
-            class="btn btn-sm {piiRevealed ? 'btn-warn' : ''}"
+            class="btn btn-sm demo-hide {piiRevealed ? 'btn-warn' : ''}"
             onclick={toggleRevealPii}
             title="Audit-logged DPDP PII unmasking"
           >
@@ -625,7 +625,7 @@
 
           <button
             type="button"
-            class="btn btn-sm"
+            class="btn btn-sm demo-hide"
             onclick={requestPurgePii}
             title="DPDP Right-to-Erasure: permanently wipe unmasked copies"
           >
@@ -634,7 +634,7 @@
 
           <button
             type="button"
-            class="btn btn-sm {activeSession.status === 'QUARANTINED' ? 'btn-ok' : 'btn-danger'}"
+            class="btn btn-sm demo-hide {activeSession.status === 'QUARANTINED' ? 'btn-ok' : 'btn-danger'}"
             onclick={toggleQuarantine}
           >
             {#if activeSession.status === 'QUARANTINED'}
@@ -1778,5 +1778,75 @@
       backdrop-filter: blur(18px);
       box-shadow: var(--shadow-pop);
     }
+  }
+
+  /* Minimal Demo Mode adjustments */
+  :global(:root[data-demo='true']) .demo-hide,
+  :global(:root[data-demo='true']) .rail-controls,
+  :global(:root[data-demo='true']) .sc-prev,
+  :global(:root[data-demo='true']) .sc-time,
+  :global(:root[data-demo='true']) .ch-sub,
+  :global(:root[data-demo='true']) .sample-pills,
+  :global(:root[data-demo='true']) .ov-field.grow,
+  :global(:root[data-demo='true']) .customer-pane:not(.mobile-open) {
+    display: none;
+  }
+  :global(:root[data-demo='true']) .ops-grid {
+    grid-template-columns: 248px minmax(0, 1fr);
+    gap: 16px;
+  }
+  :global(:root[data-demo='true']) .mobile-360-btn,
+  :global(:root[data-demo='true']) .mobile-close-btn {
+    display: inline-flex;
+  }
+  :global(:root[data-demo='true']) .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    border: none;
+    background: var(--backdrop-bg);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  :global(:root[data-demo='true']) .customer-pane.mobile-open {
+    display: flex;
+    position: fixed;
+    top: 68px;
+    right: 16px;
+    bottom: 16px;
+    width: min(350px, 90vw);
+    z-index: 65;
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px);
+    box-shadow: var(--shadow-pop);
+  }
+  :global(:root[data-demo='true']) .ch-title h3 {
+    font-size: 20px;
+  }
+  :global(:root[data-demo='true']) .sc-name {
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .msg-bubble {
+    font-size: 16px;
+    padding: 15px 18px;
+  }
+  :global(:root[data-demo='true']) .ov-title {
+    font-size: 17px;
+    font-weight: 600;
+  }
+  :global(:root[data-demo='true']) .ov-reason {
+    font-size: 14.5px;
+  }
+  :global(:root[data-demo='true']) .ov-field.amt .input {
+    height: 38px;
+    font-size: 17px;
+    font-weight: 700;
+  }
+  :global(:root[data-demo='true']) .ov-btns .btn {
+    height: 38px;
+    font-size: 13.5px;
+    padding: 0 16px;
   }
 </style>

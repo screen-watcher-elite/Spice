@@ -20,6 +20,7 @@ class AppStore {
   focusChatsFilter = $state<string | null>(null);
   revision = $state<number>(0);
   theme = $state<'dark' | 'light'>('dark');
+  demoMode = $state<boolean>(false);
 
   shieldStatus = $state<ShieldStatus | null>(null);
   stats = $state<TelemetryStats>({
@@ -52,6 +53,8 @@ class AppStore {
         this.theme = saved;
       }
       this.applyThemeDom();
+      this.demoMode = localStorage.getItem('aegismesh_demo') === 'true';
+      this.applyDemoDom();
     }
   }
 
@@ -69,6 +72,20 @@ class AppStore {
       localStorage.setItem('aegismesh_theme', this.theme);
     }
     this.applyThemeDom();
+  }
+
+  applyDemoDom() {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.demo = this.demoMode ? 'true' : 'false';
+    }
+  }
+
+  toggleDemoMode() {
+    this.demoMode = !this.demoMode;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('aegismesh_demo', String(this.demoMode));
+    }
+    this.applyDemoDom();
   }
 
   pushToast(kind: ToastItem['kind'], title: string, detail?: string) {

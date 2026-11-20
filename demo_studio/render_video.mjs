@@ -7,7 +7,9 @@ import path from 'node:path';
 const ROOT = path.resolve('C:/Users/Ashutosh/Cyberground/spice');
 const STUDIO_DIR = path.join(ROOT, 'demo_studio');
 const FRAMES_DIR = path.join(STUDIO_DIR, 'frames');
-const OUT_MP4 = path.join(ROOT, 'demo', 'AegisMesh_Product_Demo.mp4');
+const argOut = process.argv[2] ? path.resolve(ROOT, process.argv[2]) : path.join(ROOT, 'demo', 'AegisMesh_Product_Demo.mp4');
+const argCrf = process.argv.includes('--crf') ? process.argv[process.argv.indexOf('--crf') + 1] : '17';
+const OUT_MP4 = argOut;
 const MASTER_WAV = path.join(STUDIO_DIR, 'audio', 'master_audio.wav');
 const TIMELINE_PATH = path.join(STUDIO_DIR, 'timeline.json');
 const CHROME_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -191,7 +193,7 @@ async function main() {
           '-i', MASTER_WAV,
           '-c:v', 'libx264',
           '-preset', 'medium',
-          '-crf', '17',
+          '-crf', String(argCrf),
           '-pix_fmt', 'yuv420p',
           '-c:a', 'aac',
           '-b:a', '192k',

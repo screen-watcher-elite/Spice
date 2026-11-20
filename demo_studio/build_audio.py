@@ -2,8 +2,8 @@ import base64
 import json
 import os
 import subprocess
+import sys
 import time
-import urllib.error
 import urllib.request
 import wave
 import numpy as np
@@ -60,10 +60,10 @@ def synthesize_tts(api_key: str, text: str, out_wav: str, voice: str = 'Kore'):
                 else:
                     with open(raw_wav, 'wb') as f:
                         f.write(raw_bytes)
-                # Resample & normalize cleanly to 48kHz stereo
+                # Trim edge silence, tighten cadence slightly (+7% fast keynote delivery), normalize cleanly
                 subprocess.run([
                     'ffmpeg', '-y', '-i', raw_wav,
-                    '-af', 'silenceremove=start_periods=1:start_silence=0.05:start_threshold=-48dB,areverse,silenceremove=start_periods=1:start_silence=0.05:start_threshold=-48dB,areverse,loudnorm=I=-16:TP=-1.5:LRA=7',
+                    '-af', 'silenceremove=start_periods=1:start_silence=0.02:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_silence=0.02:start_threshold=-45dB,areverse,atempo=1.07,loudnorm=I=-15:TP=-1.2:LRA=6',
                     '-ar', str(SR), '-ac', '2', out_wav,
                 ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 os.remove(raw_wav)
@@ -76,48 +76,52 @@ def synthesize_tts(api_key: str, text: str, out_wav: str, voice: str = 'Kore'):
                 time.sleep(1.5)
     raise RuntimeError(f'All TTS models failed for {out_wav}')
 
+def wav_duration(wav_path: str) -> float:
+    with wave.open(wav_path, 'rb') as wf:
+        return wf.getnframes() / float(wf.getframerate())
+
 ACTS_SPEC = [
     {
-        'id': 'act0_hook',
-        'title': 'Before vs After // AegisMesh 3D Studio',
-        'pre_pad': 0.55,
-        'post_pad': 2.0,
-        'text': 'Most fintech AI demos look flat, and ship wide open. Watch what happens when AegisMesh puts six layers of Rust security around every customer turn.',
+        'id': 'b0_slam',
+        'title': 'AEGISMESH // SIX-LAYER FINTECH AI FIREWALL',
+        'pre_pad': 0.14,
+        'post_pad': 0.30,
+        'text': 'Autonomous banking AI breaks fast under RBI caps and DPDP privacy law. Meet AegisMesh, six layers of native Rust security built for Indian fintech.',
     },
     {
-        'id': 'act1_overview',
-        'title': '01 // Native Rust & DPDP Telemetry Mesh',
-        'pre_pad': 0.6,
-        'post_pad': 1.4,
-        'text': 'Built in native Rust and Svelte Five, AegisMesh inspects every prompt in thirty-seven microseconds, masking Aadhaar and PAN under India DPDP Act before any model sees a single byte.',
+        'id': 'b1_overview',
+        'title': '01 // 37µs RUST CORE & DPDP PII VAULT',
+        'pre_pad': 0.14,
+        'post_pad': 0.28,
+        'text': 'Every prompt clears our Rust normalizer in thirty-seven microseconds, vaulting Aadhaar, PAN, and UPI tokens before any model sees plaintext.',
     },
     {
-        'id': 'act2_sandbox',
-        'title': '02 // Red-Team Attack Sandbox & Gemini Decision 1',
-        'pre_pad': 0.6,
-        'post_pad': 1.5,
-        'text': 'In the live Attack Sandbox, XSS, Base64 smuggling, and Hinglish jailbreaks are stopped cold, while Google Gemini Decision One catches subtle social engineering with zero output tokens.',
+        'id': 'b2_sandbox',
+        'title': '02 // LIVE ATTACK SANDBOX & GEMINI DECISION 1',
+        'pre_pad': 0.14,
+        'post_pad': 0.30,
+        'text': 'XSS, Base64 smuggling, and Hinglish jailbreaks stop cold at Layer One, while zero-token Gemini Decision One catches subtle RBI coercion live.',
     },
     {
-        'id': 'act3_chats',
-        'title': '03 // Layer 4 RBI Breaker & Maker-Checker Staff Control',
-        'pre_pad': 0.6,
-        'post_pad': 1.6,
-        'text': 'When an agent proposes a twenty-five-thousand-rupee refund, Layer Four RBI Circuit Breaker halts execution automatically. Officers inspect the tool trace, confirm the ledger update, and take over live.',
+        'id': 'b3_chats',
+        'title': '03 // RBI CIRCUIT BREAKER & MAKER-CHECKER',
+        'pre_pad': 0.14,
+        'post_pad': 0.32,
+        'text': 'When an agent triggers a twenty-five-thousand-rupee refund, Layer Four halts execution immediately. Officers inspect the trace, confirm ledger settlement, or take over live.',
     },
     {
-        'id': 'act4_sentinel',
-        'title': '04 // Layer 6 Async Sentinel & 3-Model Gemini Stack',
-        'pre_pad': 0.6,
-        'post_pad': 1.4,
-        'text': 'Off the hot path, an asynchronous Gemini Sentinel scores multi-turn drift and compliance grade AAA, controlled cleanly alongside all three Gemini models and instant Command K shortcuts.',
+        'id': 'b4_sentinel',
+        'title': '04 // ASYNC SENTINEL & 3-MODEL GEMINI STACK',
+        'pre_pad': 0.14,
+        'post_pad': 0.30,
+        'text': 'Off the hot path, a Layer Six Gemini Sentinel audits compliance grade AAA, backed by three role-tuned Gemini models and instant Command K control.',
     },
     {
-        'id': 'act5_finale',
-        'title': '05 // RBI Compliance Audit Trail & Google Cloud Run',
-        'pre_pad': 0.7,
-        'post_pad': 3.2,
-        'text': 'Every decision prints an immutable RBI and DPDP audit record. Ship AegisMesh as a single Windows executable or deploy straight to Google Cloud Run.',
+        'id': 'b5_finale',
+        'title': '05 // IMMUTABLE AUDIT & GOOGLE CLOUD RUN',
+        'pre_pad': 0.14,
+        'post_pad': 2.25,
+        'text': 'Every turn writes an immutable RBI audit trail. Run AegisMesh as one portable executable or deploy straight to Google Cloud Run Mumbai.',
     },
 ]
 
@@ -144,70 +148,89 @@ def add_sfx(buf, t_sec, sig):
     buf[idx : idx + n] += sig[:n]
 
 def synth_thud():
-    dur = 0.42
+    dur = 0.34
     t = np.linspace(0, dur, int(dur * SR), endpoint=False)
-    freq = 92.0 * np.exp(-t * 9.5) + 36.0
+    freq = 110.0 * np.exp(-t * 13.0) + 38.0
     phase = 2.0 * np.pi * np.cumsum(freq) / SR
-    sub = np.sin(phase) * np.exp(-t * 8.0) * 0.68
-    click = np.sin(2.0 * np.pi * 165.0 * t) * np.exp(-t * 45.0) * 0.35
-    mono = sub + click
+    sub = np.sin(phase) * np.exp(-t * 9.5) * 0.72
+    punch = np.sin(2.0 * np.pi * 195.0 * t) * np.exp(-t * 52.0) * 0.36
+    mono = sub + punch
     return np.column_stack([mono, mono])
 
+def synth_stamp_thud():
+    dur = 0.48
+    t = np.linspace(0, dur, int(dur * SR), endpoint=False)
+    freq = 104.0 * np.exp(-t * 15.0) + 32.0
+    phase = 2.0 * np.pi * np.cumsum(freq) / SR
+    sub = np.sin(phase) * np.exp(-t * 6.8) * 1.15
+    rng = np.random.default_rng(19)
+    click = np.diff(rng.standard_normal(len(t)), prepend=0.0) * np.exp(-t * 85.0) * 0.44
+    seal = np.sin(2.0 * np.pi * 230.0 * t) * np.exp(-t * 32.0) * 0.50
+    mono = np.tanh((sub + click + seal) * 1.25) * 0.96
+    return np.column_stack([mono, np.roll(mono, 20)])
+
 def synth_whoosh():
-    dur = 0.36
+    dur = 0.28
     n = int(dur * SR)
     t = np.linspace(0, dur, n, endpoint=False)
     rng = np.random.default_rng(7)
     noise = rng.standard_normal(n)
-    # Soft band-swept envelope
-    env = np.sin(np.pi * (t / dur)) ** 1.6
-    # Simple moving-average smoothing that varies for whoosh character
-    kernel = np.hanning(35)
+    env = np.sin(np.pi * (t / dur)) ** 1.4
+    kernel = np.hanning(29)
     kernel /= kernel.sum()
     smooth = np.convolve(noise, kernel, mode='same')
-    carrier = np.sin(2 * np.pi * (180 + 420 * (t / dur)) * t) * 0.14
-    l = (smooth * 0.35 + carrier) * env
-    r = (np.roll(smooth, 90) * 0.35 + carrier) * env
+    carrier = np.sin(2 * np.pi * (240 + 520 * (t / dur)) * t) * 0.14
+    l = (smooth * 0.34 + carrier) * env
+    r = (np.roll(smooth, 72) * 0.34 + carrier) * env
     return np.column_stack([l, r])
 
+def synth_riser():
+    dur = 0.45
+    n = int(dur * SR)
+    t = np.linspace(0, dur, n, endpoint=False)
+    freq = 160.0 + 620.0 * (t / dur) ** 2.2
+    ph = 2.0 * np.pi * np.cumsum(freq) / SR
+    env = (t / dur) ** 1.8 * 0.18
+    mono = np.sin(ph) * env
+    return np.column_stack([mono, np.roll(mono, 40)])
+
 def synth_pop_click():
-    dur = 0.055
+    dur = 0.045
     t = np.linspace(0, dur, int(dur * SR), endpoint=False)
-    freq = 860.0 * np.exp(-t * 42.0) + 280.0
+    freq = 920.0 * np.exp(-t * 48.0) + 310.0
     phase = 2.0 * np.pi * np.cumsum(freq) / SR
-    mono = np.sin(phase) * np.exp(-t * 68.0) * 0.52
+    mono = np.sin(phase) * np.exp(-t * 74.0) * 0.50
     return np.column_stack([mono, mono])
 
 def synth_chime():
-    dur = 0.9
+    dur = 0.65
     t = np.linspace(0, dur, int(dur * SR), endpoint=False)
     freqs = [554.37, 659.25, 830.61, 1108.73]
-    sig = sum(np.sin(2 * np.pi * f * t) * np.exp(-t * (3.2 + 0.4 * i)) for i, f in enumerate(freqs))
-    sig *= (1.0 - np.exp(-t * 140.0)) * 0.16
-    return np.column_stack([sig, np.roll(sig, 180)])
+    sig = sum(np.sin(2 * np.pi * f * t) * np.exp(-t * (4.0 + 0.4 * i)) for i, f in enumerate(freqs))
+    sig *= (1.0 - np.exp(-t * 160.0)) * 0.16
+    return np.column_stack([sig, np.roll(sig, 140)])
 
 def synth_paper_slide():
-    dur = 1.15
+    dur = 0.85
     n = int(dur * SR)
     t = np.linspace(0, dur, n, endpoint=False)
     rng = np.random.default_rng(42)
     noise = rng.standard_normal(n)
-    # High-pass feel via difference + mechanical stepper micro-pulses
     hp = np.diff(noise, prepend=0.0)
     env = np.sin(np.pi * (t / dur)) ** 0.85
-    pulses = (0.5 + 0.5 * np.sin(2 * np.pi * 22.0 * t)) * 0.55 + 0.45
-    mono = hp * env * pulses * 0.22
-    return np.column_stack([mono, np.roll(mono, 48)])
+    pulses = (0.5 + 0.5 * np.sin(2 * np.pi * 26.0 * t)) * 0.55 + 0.45
+    mono = hp * env * pulses * 0.24
+    return np.column_stack([mono, np.roll(mono, 42)])
 
 def synth_music(total_dur: float):
+    # Driving 128 BPM keynote electronic beat
     n = int(total_dur * SR)
     t = np.linspace(0, total_dur, n, endpoint=False)
-    bpm = 120.0
+    bpm = 128.0
     beat_dur = 60.0 / bpm
     buf = np.zeros((n, 2), dtype=np.float32)
-    rng = np.random.default_rng(101)
+    rng = np.random.default_rng(108)
 
-    # F#m9 - Dmaj7 - Aadd9 - E6 chord roots & voicings (clean Linear/Apple launch pulse)
     chords = [
         [185.00, 220.00, 277.18, 329.63, 415.30],
         [146.83, 220.00, 277.18, 369.99, 440.00],
@@ -216,7 +239,6 @@ def synth_music(total_dur: float):
     ]
     basses = [92.50, 73.42, 110.00, 82.41]
 
-    # Ambient studio pad bed
     bar_idx = np.floor(t / (4.0 * beat_dur)).astype(int) % 4
     pad = np.zeros(n, dtype=np.float32)
     for ci, freqs in enumerate(chords):
@@ -224,68 +246,68 @@ def synth_music(total_dur: float):
         local_t = t[mask]
         val = sum(np.sin(2 * np.pi * f * local_t) for f in freqs) / len(freqs)
         pad[mask] = val
-    pad_l = pad * 0.14
-    pad_r = np.roll(pad, 360) * 0.14
-    buf[:, 0] += pad_l
-    buf[:, 1] += pad_r
+    buf[:, 0] += pad * 0.11
+    buf[:, 1] += np.roll(pad, 320) * 0.11
 
     total_beats = int(total_dur / beat_dur)
     for b in range(total_beats):
         bt = b * beat_dur
         idx = int(bt * SR)
-        # Tight minimal kick on every beat
-        kd = 0.20
+        kd = 0.18
         kt = np.linspace(0, kd, int(kd * SR), endpoint=False)
-        kf = 105.0 * np.exp(-kt * 22.0) + 46.0
+        kf = 118.0 * np.exp(-kt * 26.0) + 48.0
         kph = 2 * np.pi * np.cumsum(kf) / SR
-        kick = np.sin(kph) * np.exp(-kt * 16.0) * 0.24
+        kick = np.sin(kph) * np.exp(-kt * 17.5) * 0.28
         kn = min(len(kick), n - idx)
         buf[idx : idx + kn, 0] += kick[:kn]
         buf[idx : idx + kn, 1] += kick[:kn]
 
-        # Plucked bass off-beat groove
+        # Driving 16th-beat pulse bass
         bass_f = basses[(b // 4) % 4]
-        for sub in (0.0, 0.5):
-            if sub == 0.0 and (b % 2 == 0):
-                continue
+        for sub in (0.25, 0.5, 0.75):
             s_idx = int((bt + sub * beat_dur) * SR)
-            bd = 0.18
+            bd = 0.11
             btt = np.linspace(0, bd, int(bd * SR), endpoint=False)
-            bs = (np.sin(2 * np.pi * bass_f * btt) + 0.35 * np.sin(4 * np.pi * bass_f * btt)) * np.exp(-btt * 14.0) * 0.16
+            bs = (np.sin(2 * np.pi * bass_f * btt) + 0.4 * np.sin(4 * np.pi * bass_f * btt)) * np.exp(-btt * 19.0) * 0.14
             bn = min(len(bs), n - s_idx)
             if bn > 0:
                 buf[s_idx : s_idx + bn, 0] += bs[:bn]
                 buf[s_idx : s_idx + bn, 1] += bs[:bn]
 
-        # Crisp light hi-hat on 8ths
+        # Crisp off-beat hi-hat & clap snap on beats 2 & 4
+        if b % 2 == 1:
+            sn_len = min(int(0.08 * SR), n - idx)
+            if sn_len > 2:
+                st = np.linspace(0, 0.08, sn_len, endpoint=False)
+                snap = np.diff(rng.standard_normal(sn_len), prepend=0.0) * np.exp(-st * 48.0) * 0.09
+                buf[idx : idx + sn_len, 0] += snap
+                buf[idx : idx + sn_len, 1] += snap
+
         for eighth in (0.0, 0.5):
             h_idx = int((bt + eighth * beat_dur) * SR)
-            hd = 0.032
+            hd = 0.025
             hn = min(int(hd * SR), n - h_idx)
             if hn > 2:
                 ht = np.linspace(0, hd, hn, endpoint=False)
-                nz = rng.standard_normal(hn)
-                hat = np.diff(nz, prepend=0.0) * np.exp(-ht * 95.0) * (0.045 if eighth else 0.03)
+                hat = np.diff(rng.standard_normal(hn), prepend=0.0) * np.exp(-ht * 110.0) * (0.048 if eighth else 0.028)
                 buf[h_idx : h_idx + hn, 0] += hat
                 buf[h_idx : h_idx + hn, 1] += hat * 0.85
 
-        # Melodic glass pluck arp (clean tech energy)
         chord = chords[(b // 4) % 4]
         for step in range(2):
             p_idx = int((bt + step * 0.5 * beat_dur) * SR)
             freq = chord[(b * 2 + step) % len(chord)] * 2.0
-            pd = 0.22
+            pd = 0.16
             pn = min(int(pd * SR), n - p_idx)
             if pn > 0:
                 pt = np.linspace(0, pd, pn, endpoint=False)
-                pluck = np.sin(2 * np.pi * freq * pt) * np.exp(-pt * 15.0) * 0.075
-                pan = 0.7 if ((b + step) % 2 == 0) else 0.3
+                pluck = np.sin(2 * np.pi * freq * pt) * np.exp(-pt * 18.0) * 0.078
+                pan = 0.72 if ((b + step) % 2 == 0) else 0.28
                 buf[p_idx : p_idx + pn, 0] += pluck * pan
                 buf[p_idx : p_idx + pn, 1] += pluck * (1.0 - pan)
 
-    # Fade in & out gracefully
-    fade_in = int(1.0 * SR)
-    fade_out = int(2.2 * SR)
+    fade_in = int(0.35 * SR)
+    fade_out = int(1.2 * SR)
     if len(buf) > fade_in:
         buf[:fade_in] *= np.linspace(0.0, 1.0, fade_in)[:, None]
     if len(buf) > fade_out:
@@ -293,19 +315,26 @@ def synth_music(total_dur: float):
     return buf
 
 def main():
+    regen_vo = '--regen-vo' in sys.argv
     api_key = load_api_key()
     acts_out = []
     vo_files = []
     cursor_t = 0.0
 
     for i, spec in enumerate(ACTS_SPEC):
-        wav_path = os.path.join(AUDIO_DIR, f'vo_{i}_{spec["id"]}.wav')
-        vo_dur = synthesize_tts(api_key, spec['text'], wav_path)
+        wav_path = os.path.join(AUDIO_DIR, f'fast_vo_{i}_{spec["id"]}.wav')
+        if not regen_vo and os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000:
+            vo_dur = wav_duration(wav_path)
+            print(f'[TTS REUSE] {os.path.basename(wav_path)}: {vo_dur:.2f}s')
+        else:
+            if i > 0:
+                time.sleep(1.0)
+            vo_dur = synthesize_tts(api_key, spec['text'], wav_path)
         start_t = round(cursor_t, 3)
         vo_start = round(start_t + spec['pre_pad'], 3)
         vo_end = round(vo_start + vo_dur, 3)
-        # Ensure minimum breathing visual duration per act
-        end_t = round(max(vo_end + spec['post_pad'], start_t + 11.5 if i == 0 else vo_end + spec['post_pad']), 3)
+        end_t = round(vo_end + spec['post_pad'], 3)
+        dur = round(end_t - start_t, 3)
         acts_out.append({
             'id': spec['id'],
             'title': spec['title'],
@@ -313,16 +342,14 @@ def main():
             'end': end_t,
             'vo_start': vo_start,
             'vo_end': vo_end,
-            'duration': round(end_t - start_t, 3),
+            'duration': dur,
         })
         vo_files.append((vo_start, wav_path))
         cursor_t = end_t
 
     total_duration = round(cursor_t, 3)
-    print(f'[TIMELINE] Total video duration = {total_duration:.2f}s ({len(acts_out)} acts)')
-    assert total_duration < 175.0, 'Video must stay strictly under 3 minutes!'
+    print(f'[TIMELINE] Fast Buildathon Cut = {total_duration:.2f}s ({len(acts_out)} tight beats)')
 
-    # Assemble combined VO track
     n_samples = int(np.ceil(total_duration * SR))
     vo_buf = np.zeros((n_samples, 2), dtype=np.float32)
     for vs, wf_path in vo_files:
@@ -331,40 +358,54 @@ def main():
     vo_mix_path = os.path.join(AUDIO_DIR, 'vo_track.wav')
     save_wav_stereo(vo_mix_path, vo_buf)
 
-    # Generate music track
     music_buf = synth_music(total_duration)
     music_path = os.path.join(AUDIO_DIR, 'music_track.wav')
     save_wav_stereo(music_path, music_buf)
 
-    # Synchronized SFX cues aligned with stage.html choreography
     sfx_cues = []
-    a0, a1, a2, a3, a4, a5 = acts_out
-    sfx_cues.append({'t': 1.85, 'kind': 'pop'})
-    sfx_cues.append({'t': 3.60, 'kind': 'whoosh'})
-    sfx_cues.append({'t': a0['end'] - 0.85, 'kind': 'thud'})
-    sfx_cues.append({'t': a1['start'] + 1.4, 'kind': 'whoosh'})
-    sfx_cues.append({'t': a1['start'] + 4.2, 'kind': 'pop'})
-    sfx_cues.append({'t': a2['start'] + 0.05, 'kind': 'thud'})
-    sfx_cues.append({'t': a2['start'] + 1.85, 'kind': 'pop'})
-    sfx_cues.append({'t': a2['start'] + 2.35, 'kind': 'whoosh'})
-    sfx_cues.append({'t': a2['start'] + 6.40, 'kind': 'pop'})
-    sfx_cues.append({'t': a2['start'] + 6.85, 'kind': 'chime'})
-    sfx_cues.append({'t': a3['start'] + 0.05, 'kind': 'thud'})
-    sfx_cues.append({'t': a3['start'] + 2.15, 'kind': 'pop'})
-    sfx_cues.append({'t': a3['start'] + 4.65, 'kind': 'whoosh'})
-    sfx_cues.append({'t': a3['start'] + 6.80, 'kind': 'pop'})
-    sfx_cues.append({'t': a3['start'] + 7.20, 'kind': 'chime'})
-    sfx_cues.append({'t': a4['start'] + 0.05, 'kind': 'thud'})
-    sfx_cues.append({'t': a4['start'] + 3.80, 'kind': 'whoosh'})
-    sfx_cues.append({'t': a4['start'] + 7.40, 'kind': 'pop'})
-    sfx_cues.append({'t': a5['start'] + 0.05, 'kind': 'thud'})
-    sfx_cues.append({'t': a5['start'] + 1.35, 'kind': 'paper'})
-    sfx_cues.append({'t': a5['start'] + 5.60, 'kind': 'chime'})
+    b0, b1, b2, b3, b4, b5 = acts_out
+    # Beat 0: Rogue prompt slam -> 6-layer unfold -> Bento UI reveal
+    sfx_cues.append({'t': 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': 2.90, 'kind': 'whoosh'})
+    sfx_cues.append({'t': 6.40, 'kind': 'pop'})
+    # Beat 1: 36.9 us hero stat -> PII scanner sweep -> PAN/Aadhaar lock chips
+    sfx_cues.append({'t': b1['start'] - 0.35, 'kind': 'riser'})
+    sfx_cues.append({'t': b1['start'] + 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': b1['start'] + 3.10, 'kind': 'whoosh'})
+    sfx_cues.append({'t': b1['start'] + 4.40, 'kind': 'pop'})
+    sfx_cues.append({'t': b1['start'] + 5.00, 'kind': 'pop'})
+    # Beat 2: Sandbox L1 Blocked spotlight -> gemini-decision-1 gauge lock
+    sfx_cues.append({'t': b2['start'] - 0.35, 'kind': 'riser'})
+    sfx_cues.append({'t': b2['start'] + 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': b2['start'] + 1.60, 'kind': 'pop'})
+    sfx_cues.append({'t': b2['start'] + 4.50, 'kind': 'whoosh'})
+    sfx_cues.append({'t': b2['start'] + 6.10, 'kind': 'chime'})
+    # Beat 3: RBI Circuit Breaker trip -> Macro Chats deliberate approval -> stamp_thud -> settled chime
+    sfx_cues.append({'t': b3['start'] + 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': b3['start'] + 1.20, 'kind': 'stamp_thud'})
+    sfx_cues.append({'t': b3['start'] + 4.00, 'kind': 'whoosh'})
+    sfx_cues.append({'t': b3['start'] + 6.95, 'kind': 'stamp_thud'})
+    sfx_cues.append({'t': b3['start'] + 7.45, 'kind': 'chime'})
+    # Beat 4: Sentinel AAA -> 3-Model Gemini Bento stack -> Minimal Settings Ken Burns
+    sfx_cues.append({'t': b4['start'] + 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': b4['start'] + 3.40, 'kind': 'whoosh'})
+    sfx_cues.append({'t': b4['start'] + 4.20, 'kind': 'pop'})
+    sfx_cues.append({'t': b4['start'] + 4.60, 'kind': 'pop'})
+    sfx_cues.append({'t': b4['start'] + 5.00, 'kind': 'pop'})
+    sfx_cues.append({'t': b4['start'] + 7.40, 'kind': 'whoosh'})
+    # Beat 5: Receipt prints -> AAA stamp slams (stamp_thud) + extended Verified hold -> Cloud Run Mumbai CTA
+    sfx_cues.append({'t': b5['start'] + 0.02, 'kind': 'thud'})
+    sfx_cues.append({'t': b5['start'] + 0.22, 'kind': 'paper'})
+    sfx_cues.append({'t': b5['start'] + 1.65, 'kind': 'stamp_thud'})
+    sfx_cues.append({'t': b5['start'] + 5.65, 'kind': 'whoosh'})
+    sfx_cues.append({'t': b5['start'] + 6.20, 'kind': 'chime'})
 
     sfx_buf = np.zeros((n_samples, 2), dtype=np.float32)
     bank = {
         'thud': synth_thud(),
+        'stamp_thud': synth_stamp_thud(),
         'whoosh': synth_whoosh(),
+        'riser': synth_riser(),
         'pop': synth_pop_click(),
         'chime': synth_chime(),
         'paper': synth_paper_slide(),
@@ -375,14 +416,13 @@ def main():
     save_wav_stereo(sfx_path, sfx_buf)
 
     master_path = os.path.join(AUDIO_DIR, 'master_audio.wav')
-    # Duck music cleanly beneath narration with ffmpeg sidechaincompress & mix SFX
     subprocess.run([
         'ffmpeg', '-y',
         '-i', music_path,
         '-i', vo_mix_path,
         '-i', sfx_path,
         '-filter_complex',
-        '[0:a]volume=0.82[m];[1:a]asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.02:ratio=6:attack=40:release=320[ducked];[ducked][vo2][2:a]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.95[out]',
+        '[0:a]volume=0.88[m];[1:a]asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.018:ratio=7:attack=25:release=220[ducked];[ducked][vo2][2:a]amix=inputs=3:duration=first:normalize=0,loudnorm=I=-14:TP=-1.0:LRA=7[out]',
         '-map', '[out]',
         '-ar', str(SR), '-ac', '2',
         master_path,
@@ -398,7 +438,7 @@ def main():
     }
     with open(TIMELINE_PATH, 'w', encoding='utf-8') as f:
         json.dump(timeline, f, indent=2)
-    print(f'[AUDIO OK] Wrote {master_path} & {TIMELINE_PATH}')
+    print(f'[AUDIO OK] {master_path} & {TIMELINE_PATH}')
 
 if __name__ == '__main__':
     main()

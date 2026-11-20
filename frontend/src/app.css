@@ -169,6 +169,41 @@
   --shadow-pop: 0 24px 60px -12px rgba(15, 23, 42, 0.18), 0 0 0 1px var(--line-2);
 }
 
+:root[data-demo='true'] {
+  --r-lg: 20px;
+}
+
+:root[data-demo='true'] body,
+:root[data-demo='true'] #app {
+  font-size: 15px;
+}
+
+:root[data-demo='true'] .eyebrow {
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+}
+
+:root[data-demo='true'] .tag {
+  height: 24px;
+  font-size: 11px;
+  padding: 0 10px;
+}
+
+:root[data-demo='true'] .code {
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px 18px;
+}
+
+:root[data-theme='light'][data-demo='true'] {
+  --bg: #ebf0ee;
+  --bg-1: #f8faf9;
+  --card-bg: #fafcfb;
+  --well: #eef3f1;
+  --code-bg: #f1f5f3;
+  --topbar-bg: rgba(248, 250, 249, 0.94);
+}
+
 *,
 *::before,
 *::after {
