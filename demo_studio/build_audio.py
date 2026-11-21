@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import wave
 import numpy as np
@@ -29,71 +30,184 @@ def wav_duration(wav_path: str) -> float:
     with wave.open(wav_path, 'rb') as wf:
         return wf.getnframes() / float(wf.getframerate())
 
-def synthesize_tts(api_key: str, text: str, out_wav: str, voice: str = 'Charon'):
-    models = ['gemini-2.5-flash-preview-tts', 'gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts']
-    directed_text = (
-        'Speak in a warm, authoritative, crystal-clear studio keynote narrator voice with engaging natural rhythm and zero rush:\n\n'
-        + text
+DEFAULT_VOICE_38 = 'en-us-podcaster-7'
+DEFAULT_VOICE_31 = 'Achird'
+DEFAULT_VOICE_EDGE = 'en-US-AndrewMultilingualNeural'
+EXHAUSTED_MODELS = set()
+
+AF_CONDENSER_CHAIN = (
+    'silenceremove=start_periods=1:start_silence=0.06:start_threshold=-52dB,'
+    'areverse,silenceremove=start_periods=1:start_silence=0.06:start_threshold=-52dB,areverse,'
+    'highpass=f=65,'
+    'equalizer=f=150:t=q:w=1.2:g=1.4,'
+    'equalizer=f=6500:t=q:w=1.8:g=-1.2,'
+    'acompressor=threshold=-20dB:ratio=1.8:attack=18:release=180:makeup=1.0'
+)
+
+def master_vocal(in_path: str, out_wav: str):
+    """Apply warm condenser mastering to a raw voice track without crushing micro-dynamics."""
+    subprocess.run(
+        ['ffmpeg', '-y', '-i', in_path, '-af', AF_CONDENSER_CHAIN, '-ar', str(SR), '-ac', '2', out_wav],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
+
+def write_gemini_audio(inline: dict, raw_wav: str):
+    """Decode base64 WAV or 24kHz mono L16 PCM from a Gemini TTS payload into raw_wav."""
+    mime = (inline.get('mime_type') or inline.get('mimeType') or 'audio/wav').lower()
+    raw_bytes = base64.b64decode(inline['data'])
+    if 'wav' in mime or raw_bytes[:4] == b'RIFF':
+        with open(raw_wav, 'wb') as f:
+            f.write(raw_bytes)
+    else:
+        with wave.open(raw_wav, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(raw_bytes)
+
+def handle_http_429(model_name: str, err_body: str) -> bool:
+    """Return True if RPM transient (slept and worth retrying), False if daily quota exhausted."""
+    low = err_body.lower()
+    if 'per day' in low or 'requests per day' in low:
+        EXHAUSTED_MODELS.add(model_name)
+        print(f'[QUOTA RPD] {model_name} hit daily limit; skipping for remainder of run.')
+        return False
+    if 'per minute' in low or 'rpm' in low or 'rate limit' in low:
+        print(f'[QUOTA RPM] {model_name} rate-limited; sleeping 22s before retry...')
+        time.sleep(22.0)
+        return True
+    EXHAUSTED_MODELS.add(model_name)
+    return False
+
+def format_31_prompt(text: str, style: str) -> str:
+    """Format transcript with Audio Profile & Director Notes for Gemini 3.1 TTS."""
+    t31 = text.replace('<short pause>', '[short pause]').replace('<long pause>', '[long pause]')
+    s = style or 'warm, natural conversational Demo Day tone'
+    return (
+        '# AUDIO PROFILE: Founder Narrator\n'
+        'Warm, friendly, natural tech founder in his early 30s speaking into a close studio condenser '
+        'microphone — relaxed human cadence, genuine conversational inflection, subtle breath, never booming or robotic.\n\n'
+        '### DIRECTOR\'S NOTES\n'
+        f'Style: {s}\n'
+        'Pacing: Natural conversational Demo Day rhythm with relaxed pauses at punctuation and [short pause] cues.\n\n'
+        '#### TRANSCRIPT\n'
+        f'{t31}'
+    )
+
+def synthesize_tts_38(api_key: str, text: str, out_wav: str, voice: str = DEFAULT_VOICE_38, style: str = ''):
+    style_val = style or 'warm, conversational, natural human startup founder explaining with genuine clarity'
+    base_payload = {
+        'store': False,
+        'input': [{
+            'type': 'user_input',
+            'content': [{
+                'type': 'text',
+                'text': text,
+                'annotations': [{'type': 'speech_metadata', 'style': style_val}],
+            }],
+        }],
+        'response_format': {'type': 'audio'},
+        'generation_config': {'speech_config': [{'voice': voice}]},
+    }
+    raw_wav = out_wav.replace('.wav', '_raw.wav')
+    for m in ('gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'):
+        if m in EXHAUSTED_MODELS:
+            continue
+        req_payload = dict(base_payload, model=m)
+        for attempt in range(3):
+            req = urllib.request.Request(
+                'https://generativelanguage.googleapis.com/v1beta/interactions',
+                data=json.dumps(req_payload).encode('utf-8'),
+                headers={'x-goog-api-key': api_key, 'Content-Type': 'application/json'},
+                method='POST',
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    body = json.loads(resp.read().decode('utf-8'))
+                audio_blocks = [
+                    c for s in body.get('steps', []) if s.get('type') == 'model_output'
+                    for c in s.get('content', []) if c.get('type') == 'audio'
+                ]
+                if not audio_blocks:
+                    raise RuntimeError(f'No audio returned for {m}')
+                write_gemini_audio(audio_blocks[-1], raw_wav)
+                master_vocal(raw_wav, out_wav)
+                os.remove(raw_wav)
+                dur = wav_duration(out_wav)
+                print(f'[TTS OK] {os.path.basename(out_wav)} via {m} ({voice}): {dur:.2f}s')
+                return dur
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode('utf-8', errors='replace')[:400]
+                print(f'[TTS RETRY] {m} attempt {attempt+1}: HTTP {e.code} {err_body}')
+                if e.code == 429 and not handle_http_429(m, err_body):
+                    break
+                if e.code != 429:
+                    time.sleep(2.5)
+            except Exception as e:
+                print(f'[TTS RETRY] {m} attempt {attempt+1}: {e}')
+                time.sleep(2.5)
+    raise RuntimeError(f'3.8 TTS exhausted for {out_wav}')
+
+def synthesize_tts_31(api_key: str, text: str, out_wav: str, voice: str = DEFAULT_VOICE_31, style: str = ''):
+    m = 'gemini-3.1-flash-tts-preview'
+    if m in EXHAUSTED_MODELS:
+        raise RuntimeError(f'{m} exhausted')
     payload = {
-        'contents': [{'role': 'user', 'parts': [{'text': directed_text}]}],
+        'contents': [{'role': 'user', 'parts': [{'text': format_31_prompt(text, style)}]}],
         'generationConfig': {
             'responseModalities': ['AUDIO'],
             'speechConfig': {'voiceConfig': {'prebuiltVoiceConfig': {'voiceName': voice}}},
         },
     }
     raw_wav = out_wav.replace('.wav', '_raw.wav')
-    for m in models:
-        url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent'
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent'
+    for attempt in range(3):
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode('utf-8'),
             headers={'x-goog-api-key': api_key, 'Content-Type': 'application/json'},
             method='POST',
         )
-        for attempt in range(2):
-            try:
-                with urllib.request.urlopen(req, timeout=45) as resp:
-                    body = json.loads(resp.read().decode('utf-8'))
-                parts = body['candidates'][0]['content']['parts']
-                inline = next(p['inlineData'] for p in parts if 'inlineData' in p)
-                mime = inline.get('mimeType', 'audio/wav')
-                raw_bytes = base64.b64decode(inline['data'])
-                if 'L16' in mime or 'pcm' in mime:
-                    with wave.open(raw_wav, 'wb') as wf:
-                        wf.setnchannels(1)
-                        wf.setsampwidth(2)
-                        wf.setframerate(24000)
-                        wf.writeframes(raw_bytes)
-                else:
-                    with open(raw_wav, 'wb') as f:
-                        f.write(raw_bytes)
-
-                # Native 1.0x broadcast vocal mastering (zero atempo metallic artifacts)
-                af_chain = (
-                    'silenceremove=start_periods=1:start_silence=0.02:start_threshold=-45dB,'
-                    'areverse,silenceremove=start_periods=1:start_silence=0.02:start_threshold=-45dB,areverse,'
-                    'highpass=f=75,'
-                    'equalizer=f=180:t=q:w=1.2:g=2.0,'
-                    'equalizer=f=3200:t=q:w=1.4:g=1.8,'
-                    'equalizer=f=7500:t=q:w=1.6:g=-1.5,'
-                    'acompressor=threshold=-18dB:ratio=2.8:attack=12:release=140:makeup=1.5,'
-                    'loudnorm=I=-14.5:TP=-1.0:LRA=6'
-                )
-                subprocess.run(
-                    ['ffmpeg', '-y', '-i', raw_wav, '-af', af_chain, '-ar', str(SR), '-ac', '2', out_wav],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                os.remove(raw_wav)
-                dur = wav_duration(out_wav)
-                print(f'[TTS OK] {os.path.basename(out_wav)} via {m} ({voice}): {dur:.2f}s')
-                return dur
-            except Exception as e:
-                print(f'[TTS RETRY] {m} attempt {attempt+1}: {e}')
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = json.loads(resp.read().decode('utf-8'))
+            parts = body['candidates'][0]['content']['parts']
+            inline = next(p['inlineData'] for p in parts if 'inlineData' in p)
+            write_gemini_audio(inline, raw_wav)
+            master_vocal(raw_wav, out_wav)
+            os.remove(raw_wav)
+            dur = wav_duration(out_wav)
+            print(f'[TTS OK] {os.path.basename(out_wav)} via {m} ({voice}): {dur:.2f}s')
+            return dur
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8', errors='replace')[:400]
+            print(f'[TTS RETRY] {m} attempt {attempt+1}: HTTP {e.code} {err_body}')
+            if e.code == 429 and not handle_http_429(m, err_body):
+                break
+            if e.code != 429:
                 time.sleep(2.5)
-    raise RuntimeError(f'All TTS models failed for {out_wav}')
+        except Exception as e:
+            print(f'[TTS RETRY] {m} attempt {attempt+1}: {e}')
+            time.sleep(2.5)
+    raise RuntimeError(f'{m} exhausted for {out_wav}')
+
+def synthesize_tts_edge(text: str, out_wav: str, voice: str = DEFAULT_VOICE_EDGE):
+    import asyncio
+    try:
+        import edge_tts
+    except ImportError:
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'edge-tts'], check=True)
+        import edge_tts
+    clean = text.replace(' <short pause>', ', ...').replace('<short pause>', '...').replace('<long pause>', '...')
+    raw_mp3 = out_wav.replace('.wav', '_raw.mp3')
+    asyncio.run(edge_tts.Communicate(clean, voice).save(raw_mp3))
+    master_vocal(raw_mp3, out_wav)
+    os.remove(raw_mp3)
+    dur = wav_duration(out_wav)
+    print(f'[TTS OK] {os.path.basename(out_wav)} via edge-tts ({voice}): {dur:.2f}s')
+    return dur
 
 ACTS_SPEC = [
     {
@@ -101,11 +215,12 @@ ACTS_SPEC = [
         'title': '01 // THE FINTECH AI COMPLIANCE CRISIS',
         'pre_pad': 0.20,
         'post_pad': 0.45,
+        'style': 'warm, grounded, slightly urgent conversational documentary tone',
         'text': (
-            'Indian fintechs want autonomous AI handling refunds in seconds. '
-            'Yet one prompt injection drains twenty-five thousand rupees, raw Aadhaar and PAN leak under '
-            'two-hundred-fifty-crore DPDP penalties, and agents breach RBI five-thousand-rupee caps. '
-            'Banking AI is unsafe to ship.'
+            'Indian fintechs want autonomous AI resolving customer refunds in seconds. <short pause> '
+            'The catch? One clever prompt injection drains twenty-five thousand rupees, raw Aadhaar and PAN details '
+            'leak under two-hundred-fifty-crore DPDP penalties, <short pause> and bots blow past RBI five-thousand-rupee caps. '
+            'Without deterministic rails, banking AI simply isn\'t safe to ship.'
         ),
     },
     {
@@ -113,10 +228,11 @@ ACTS_SPEC = [
         'title': '02 // MEET AEGISMESH · SIX LAYERS OF RUST',
         'pre_pad': 0.20,
         'post_pad': 0.45,
+        'style': 'confident, clear, inspiring startup founder introducing a product',
         'text': (
-            'Meet AegisMesh: a six-layer Rust security gateway powered by Google Gemini. '
-            'Every prompt clears six defense plates: regex normalization, DPDP PII vaulting, '
-            'semantic guardrails, RBI circuit breakers, egress scrubbing, and an async compliance sentinel.'
+            'Meet AegisMesh — a six-layer Rust firewall built specifically for Google Gemini agents. <short pause> '
+            'Every prompt passes through six zero-trust defense layers: regex normalization, a DPDP PII vault, '
+            'Gemini guardrails, RBI circuit breakers, egress scrubbing, and an asynchronous sentinel.'
         ),
     },
     {
@@ -124,10 +240,12 @@ ACTS_SPEC = [
         'title': '03 // LIVE DEMO · TYPED PROMPT INJECTION BLOCKED',
         'pre_pad': 0.20,
         'post_pad': 0.50,
+        'style': 'focused, engaging live product walkthrough, crisp energy',
         'text': (
-            'Watch a live attack fail in real time. The attacker types an override demanding twenty-five thousand rupees '
-            'plus a customer PAN. Layer One blocks the jailbreak in thirty-seven microseconds, '
-            'Layer Two vaults the PAN, and X-Ray stops Base64 XSS cold.'
+            'Let\'s watch a live attack fail in real time. <short pause> '
+            'An attacker types an urgent override demanding twenty-five thousand rupees and slips in a customer PAN. '
+            'One click — <short pause> Layer One shuts down the jailbreak in thirty-seven microseconds, '
+            'Layer Two vaults the PAN, and our Sandbox X-Ray stops Base64 XSS cold.'
         ),
     },
     {
@@ -135,10 +253,12 @@ ACTS_SPEC = [
         'title': '04 // DPDP VAULT & GEMINI DECISION ONE',
         'pre_pad': 0.20,
         'post_pad': 0.45,
+        'style': 'thoughtful, articulate engineering explanation with natural emphasis',
         'text': (
-            'For subtle social engineering without obvious keywords, our DPDP vault first laser-scrubs Aadhaar, '
-            'PAN, and phone strings. Then zero-token Google Gemini Decision One scores hidden RBI coercion '
-            'at zero point nine seven one critical violation.'
+            'Of course, subtle social engineering doesn\'t use obvious keywords. <short pause> '
+            'So first, our DPDP vault laser-scrubs Aadhaar, PAN, and phone numbers — zero plaintext ever reaches upstream LLMs. <short pause> '
+            'Then zero-token Google Gemini Decision One evaluates the semantics cleanly, '
+            'flagging hidden RBI coercion at zero point nine seven one.'
         ),
     },
     {
@@ -146,10 +266,12 @@ ACTS_SPEC = [
         'title': '05 // RBI CIRCUIT BREAKER & MAKER-CHECKER',
         'pre_pad': 0.20,
         'post_pad': 0.45,
+        'style': 'calm, reassuring, practical fintech operator storytelling',
         'text': (
-            'Safe banking also governs real disputes. When Kavita Roy requests a genuine twenty-five-thousand-rupee refund, '
-            'Layer Four trips the five-thousand-rupee RBI breaker. An officer inspects the trace, '
-            'approves settlement in one click, and takes over live.'
+            'Safe banking also means handling real customer disputes smoothly. <short pause> '
+            'When Kavita Roy asks for a legitimate twenty-five-thousand-rupee chargeback, '
+            'Layer Four trips the five-thousand-rupee RBI breaker right on threshold. <short pause> '
+            'A compliance officer inspects the six-layer trace, approves settlement in one click, and steps into the live conversation.'
         ),
     },
     {
@@ -157,10 +279,12 @@ ACTS_SPEC = [
         'title': '06 // THREE ROLE-TUNED GEMINI MODELS',
         'pre_pad': 0.20,
         'post_pad': 0.45,
+        'style': 'energetic, crisp architectural storytelling, conversational',
         'text': (
-            'AegisMesh orchestrates three Google Gemini models: Flash-Lite thinks for customers, '
-            'zero-token Decision One guards every turn, and async Flash-Preview audits multi-turn drift '
-            'over Tokio channels, giving compliance teams live control with zero delay.'
+            'Under the hood, AegisMesh orchestrates three specialized Gemini models: '
+            'Flash-Lite reasons quickly for customers, Decision One guards every single turn inline, <short pause> '
+            'and Flash-Preview audits multi-turn drift asynchronously over Tokio channels — '
+            'giving compliance teams live policy control with zero delay.'
         ),
     },
     {
@@ -168,10 +292,12 @@ ACTS_SPEC = [
         'title': '07 // PROVEN RUST SPEED & AUDIT TRUST',
         'pre_pad': 0.20,
         'post_pad': 1.85,
+        'style': 'warm, proud, grounded closing authority with a subtle smile in the voice',
         'text': (
-            'Compared to four-hundred-millisecond Python proxies, AegisMesh protects prompts in thirty-seven microseconds — '
-            'ten thousand times faster at seventy-five thousand ops per second. '
-            'Every turn writes an immutable RBI audit trail. AegisMesh: safe AI for Indian fintech.'
+            'Compared to four-hundred-millisecond Python proxies, AegisMesh secures every prompt in thirty-seven microseconds — '
+            'over ten thousand times faster at seventy-five thousand operations per second. <short pause> '
+            'Every decision stamps an immutable RBI and DPDP audit trail. '
+            'AegisMesh: safe autonomous AI for Indian fintech.'
         ),
     },
 ]
@@ -375,22 +501,55 @@ def synth_music(total_dur: float):
         buf[-fade_out:] *= np.linspace(1.0, 0.0, fade_out)[:, None]
     return buf
 
+def generate_all_vo_uniform(api_key: str, prefer_31: bool = False):
+    """Synthesize all 7 acts using a single consistent speaker tier (no mid-video voice mismatch)."""
+    tiers = ['3.1', 'edge'] if prefer_31 else ['3.8', '3.1', 'edge']
+    last_err = None
+    for tier in tiers:
+        print(f'[TTS TIER] Generating uniform 7-act narration via tier={tier}...')
+        durs = []
+        try:
+            for i, spec in enumerate(ACTS_SPEC):
+                wav_path = os.path.join(AUDIO_DIR, f'buildathon_vo_{i}_{spec["id"]}.wav')
+                if i > 0:
+                    time.sleep(2.5)
+                if tier == '3.8':
+                    d = synthesize_tts_38(api_key, spec['text'], wav_path, voice=DEFAULT_VOICE_38, style=spec.get('style', ''))
+                elif tier == '3.1':
+                    d = synthesize_tts_31(api_key, spec['text'], wav_path, voice=DEFAULT_VOICE_31, style=spec.get('style', ''))
+                else:
+                    d = synthesize_tts_edge(spec['text'], wav_path, voice=DEFAULT_VOICE_EDGE)
+                durs.append(d)
+            return durs
+        except Exception as e:
+            last_err = e
+            print(f'[TTS TIER FALLBACK] tier={tier} failed ({e}); restarting all 7 acts on next uniform speaker tier.')
+    raise RuntimeError(f'All uniform TTS tiers failed: {last_err}')
+
 def main():
     regen_vo = '--regen-vo' in sys.argv
+    prefer_31 = '--prefer-31' in sys.argv
     api_key = load_api_key()
+
+    if regen_vo:
+        vo_durs = generate_all_vo_uniform(api_key, prefer_31=prefer_31)
+    else:
+        vo_durs = []
+        for i, spec in enumerate(ACTS_SPEC):
+            wav_path = os.path.join(AUDIO_DIR, f'buildathon_vo_{i}_{spec["id"]}.wav')
+            if not (os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000):
+                vo_durs = generate_all_vo_uniform(api_key, prefer_31=prefer_31)
+                break
+            d = wav_duration(wav_path)
+            print(f'[TTS REUSE] {os.path.basename(wav_path)}: {d:.2f}s')
+            vo_durs.append(d)
+
     acts_out = []
     vo_files = []
     cursor_t = 0.0
 
-    for i, spec in enumerate(ACTS_SPEC):
+    for i, (spec, vo_dur) in enumerate(zip(ACTS_SPEC, vo_durs)):
         wav_path = os.path.join(AUDIO_DIR, f'buildathon_vo_{i}_{spec["id"]}.wav')
-        if not regen_vo and os.path.exists(wav_path) and os.path.getsize(wav_path) > 1000:
-            vo_dur = wav_duration(wav_path)
-            print(f'[TTS REUSE] {os.path.basename(wav_path)}: {vo_dur:.2f}s')
-        else:
-            if i > 0:
-                time.sleep(3.5)
-            vo_dur = synthesize_tts(api_key, spec['text'], wav_path, voice='Charon')
         start_t = round(cursor_t, 3)
         vo_start = round(start_t + spec['pre_pad'], 3)
         vo_end = round(vo_start + vo_dur, 3)
@@ -434,7 +593,8 @@ def main():
     a2_xray = round(a2['start'] + a2['duration'] * 0.74, 3)
     a3_gauge = round(a3['start'] + a3['duration'] * 0.49, 3)
     a3_lock = round(a3['start'] + a3['duration'] * 0.67, 3)
-    a4_breach = round(a4['start'] + a4['duration'] * 0.14, 3)
+    a4_cap_cross = round(a4['start'] + 1.35, 3)
+    a4_breach = round(a4['start'] + a4['duration'] * 0.16, 3)
     a4_chats = round(a4['start'] + a4['duration'] * 0.36, 3)
     a4_click = round(a4['start'] + a4['duration'] * 0.68, 3)
     a5_ui = round(a5['start'] + a5['duration'] * 0.52, 3)
@@ -476,8 +636,10 @@ def main():
     sfx_cues.append({'t': a3_lock, 'kind': 'stamp_thud'})
     sfx_cues.append({'t': round(a3_lock + 0.25, 3), 'kind': 'chime'})
 
-    # Act 4: RBI ₹5,000 breaker -> Maker-Checker Approve
+    # Act 4: RBI ₹5,000 cap-cross -> ₹25k breaker -> Maker-Checker Approve
     sfx_cues.append({'t': a4['start'] + 0.04, 'kind': 'thud'})
+    sfx_cues.append({'t': a4_cap_cross, 'kind': 'pop'})
+    sfx_cues.append({'t': round(a4_cap_cross + 0.04, 3), 'kind': 'chime'})
     sfx_cues.append({'t': a4_breach, 'kind': 'stamp_thud'})
     sfx_cues.append({'t': a4_chats, 'kind': 'whoosh'})
     sfx_cues.append({'t': a4_click, 'kind': 'stamp_thud'})
@@ -516,7 +678,7 @@ def main():
     sfx_path = os.path.join(AUDIO_DIR, 'sfx_track.wav')
     save_wav_stereo(sfx_path, sfx_buf)
 
-    # Background music lowered ~18% (0.72 + warm 8.2kHz lowpass) + deeper sidechain ducking so voice shines cleanly
+    # Warm 7.6kHz ambient bed at 0.68 + smooth sidechain ducking + single-stage LRA=8 master loudnorm
     master_path = os.path.join(AUDIO_DIR, 'master_audio.wav')
     subprocess.run([
         'ffmpeg', '-y',
@@ -524,7 +686,7 @@ def main():
         '-i', vo_mix_path,
         '-i', sfx_path,
         '-filter_complex',
-        '[0:a]lowpass=f=8200,volume=0.72[m];[1:a]asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.010:ratio=10:attack=20:release=280[ducked];[ducked][vo2][2:a]amix=inputs=3:duration=first:normalize=0,loudnorm=I=-14:TP=-1.0:LRA=7[out]',
+        '[0:a]lowpass=f=7600,volume=0.68[m];[1:a]asplit=2[vo1][vo2];[m][vo1]sidechaincompress=threshold=0.010:ratio=9:attack=22:release=300[ducked];[ducked][vo2][2:a]amix=inputs=3:duration=first:normalize=0,loudnorm=I=-14:TP=-1.0:LRA=8[out]',
         '-map', '[out]',
         '-ar', str(SR), '-ac', '2',
         master_path,
@@ -542,6 +704,7 @@ def main():
             'a2_xray': a2_xray,
             'a3_gauge': a3_gauge,
             'a3_lock': a3_lock,
+            'a4_cap_cross': a4_cap_cross,
             'a4_breach': a4_breach,
             'a4_chats': a4_chats,
             'a4_click': a4_click,
